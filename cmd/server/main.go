@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"log"
 	"net/http"
@@ -14,6 +15,11 @@ import (
 
 //go:embed frontend
 var frontendFS embed.FS
+
+var (
+	version   = "dev"
+	startTime = time.Now()
+)
 
 func main() {
 	port := getenv("PORT", "8080")
@@ -48,6 +54,16 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Health check
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"version": version,
+			"uptime":  time.Since(startTime).Round(time.Second).String(),
+		})
+	})
+
 	// API routes
 	mux.HandleFunc("/api/register", h.Register)
 	mux.HandleFunc("/api/login", h.Login)
@@ -70,7 +86,7 @@ func main() {
 	handler := h.CORS(h.SecurityHeaders(mux))
 
 	addr := ":" + port
-	log.Printf("starting server on %s (env=%s)", addr, env)
+	log.Printf("starting server on %s (env=%s, version=%s)", addr, env, version)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("listen: %v", err)
 	}

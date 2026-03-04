@@ -9,7 +9,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: deploy to mini
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: test
+        run: go test ./...
+
+      - name: build
+        run: |
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build \
+            -ldflags "-X main.version=$(git rev-parse --short HEAD)" \
+            -o server \
+            ./cmd/server
+
+      - name: copy binary
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: 2222
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          source: server
+          target: ~/itspartyti.me/
+
+      - name: restart and verify
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -17,9 +44,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
-            cd ~/itspartyti.me
-            git pull origin main
-            go build -o server ./cmd/server
-            launchctl stop me.itspartyti.server
-            launchctl start me.itspartyti.server
-            echo "deployed $(git rev-parse --short HEAD)"
+            chmod +x ~/itspartyti.me/server
+            launchctl kickstart -k gui/$(id -u)/me.itspartyti.server
+            sleep 2
+            HEALTH=$(curl -sf http://localhost:8090/health) || (echo "health check failed" && exit 1)
+            echo "deployed: $HEALTH"

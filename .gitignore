@@ -5,4 +5,4 @@ data/
 .env
 bin/
 logs/
-server
+/server
