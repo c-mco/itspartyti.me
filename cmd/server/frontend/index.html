@@ -77,10 +77,47 @@
       <header class="header">
         <span class="header-brand">itspartyti.me</span>
         <div class="header-right">
-          <span id="header-username" class="header-user"></span>
+          <button id="btn-account-toggle" class="btn-ghost header-account-btn"></button>
           <button id="btn-logout" class="btn-ghost">logout</button>
         </div>
+        <div id="account-panel" class="account-panel" hidden>
+          <p>Permanently delete your account and all logs. Cannot be undone.</p>
+          <button id="btn-delete-account" class="btn-danger">delete account</button>
+          <div id="err-delete-account" class="form-err" role="alert" aria-live="polite"></div>
+        </div>
       </header>
+
+      <!-- Stats strip — always visible above view tabs -->
+      <div class="stats-strip" aria-label="Statistics">
+        <div class="sstat">
+          <span class="sstat-n" id="st-week">—</span>
+          <span class="sstat-l">this week</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-month">—</span>
+          <span class="sstat-l">this month</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-all">—</span>
+          <span class="sstat-l">all time</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-streak">—</span>
+          <span class="sstat-l">sober streak</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-best">—</span>
+          <span class="sstat-l">longest</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-avg">—</span>
+          <span class="sstat-l">avg per session</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-sober">—</span>
+          <span class="sstat-l">dry days</span>
+        </div>
+      </div>
 
       <!-- View selector tabs -->
       <nav class="view-nav" role="tablist" aria-label="View">
@@ -99,6 +136,7 @@
             <button id="btn-year-prev"      class="icon-btn" aria-label="Previous year">←</button>
             <span   id="year-label"         class="panel-title"></span>
             <button id="btn-year-next"      class="icon-btn" aria-label="Next year">→</button>
+            <button id="btn-year-today"     class="icon-btn" hidden>today</button>
             <button id="btn-year-transpose" class="icon-btn year-transpose-btn" aria-label="Swap month/day axes" title="Swap month/day axes">⤢</button>
           </div>
           <!-- grid is built by JS; scrollable wrapper handles mobile -->
@@ -132,9 +170,10 @@
         <!-- MONTH GRID -->
         <section id="panel-month" class="view-panel" aria-label="Month calendar" hidden>
           <div class="panel-controls">
-            <button id="btn-month-prev" class="icon-btn" aria-label="Previous month">←</button>
-            <span   id="month-label"   class="panel-title"></span>
+            <button id="btn-month-prev"  class="icon-btn" aria-label="Previous month">←</button>
+            <span   id="month-label"    class="panel-title"></span>
             <button id="btn-month-next" class="icon-btn" aria-label="Next month">→</button>
+            <button id="btn-month-today" class="icon-btn" hidden>today</button>
           </div>
           <div id="month-grid" class="month-grid" role="grid" aria-label="Monthly drink calendar">
             <!-- 7 header cells, always present -->
@@ -155,44 +194,6 @@
             <!-- entries injected by JS -->
           </div>
         </section>
-
-        <!-- ─── STATS STRIP ──────────────────────────────── -->
-        <div class="stats-strip" aria-label="Statistics">
-          <div class="sstat">
-            <span class="sstat-n" id="st-week">—</span>
-            <span class="sstat-l">this week</span>
-          </div>
-          <div class="sstat">
-            <span class="sstat-n" id="st-month">—</span>
-            <span class="sstat-l">this month</span>
-          </div>
-          <div class="sstat">
-            <span class="sstat-n" id="st-all">—</span>
-            <span class="sstat-l">all time</span>
-          </div>
-          <div class="sstat">
-            <span class="sstat-n" id="st-streak">—</span>
-            <span class="sstat-l">streak · best <span id="st-best">—</span></span>
-          </div>
-          <div class="sstat">
-            <span class="sstat-n" id="st-avg">—</span>
-            <span class="sstat-l">avg per session</span>
-          </div>
-          <div class="sstat">
-            <span class="sstat-n" id="st-sober">—</span>
-            <span class="sstat-l">dry days</span>
-          </div>
-        </div>
-
-        <!-- ─── ACCOUNT ──────────────────────────────────── -->
-        <details class="account-det">
-          <summary class="account-summary">account</summary>
-          <div class="account-body">
-            <p>Permanently delete your account and all logs. Cannot be undone.</p>
-            <button id="btn-delete-account" class="btn-danger">delete account</button>
-            <div id="err-delete-account" class="form-err" role="alert" aria-live="polite"></div>
-          </div>
-        </details>
 
       </main>
 
@@ -253,6 +254,8 @@
     <span class="scrub-bubble-date"></span>
     <span class="scrub-bubble-count"></span>
   </div>
+
+  <div id="journal-scrubber" class="journal-scrubber" hidden aria-hidden="true"></div>
 
   <script src="/app.js"></script>
 </body>

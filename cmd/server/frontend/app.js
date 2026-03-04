@@ -136,7 +136,7 @@ function showAuth() {
 function showMain() {
   $id('auth-screen').hidden = true;
   $id('main-screen').hidden = false;
-  $id('header-username').textContent = S.user;
+  $id('btn-account-toggle').textContent = S.user + ' ▾';
   loadAllData();
 }
 
@@ -223,6 +223,8 @@ function initLogout() {
    ═══════════════════════════════════════════════════════════════ */
 
 async function loadAllData() {
+  const ms = $id('main-screen');
+  ms.dataset.loading = '1';
   try {
     const [logs, stats] = await Promise.all([
       api.get('/api/logs'),
@@ -235,6 +237,8 @@ async function loadAllData() {
     renderStats();
   } catch (e) {
     console.error('loadAllData:', e);
+  } finally {
+    delete ms.dataset.loading;
   }
 }
 
@@ -376,8 +380,8 @@ function renderStats() {
   $id('st-week').textContent   = s.total_this_week;
   $id('st-month').textContent  = s.total_this_month;
   $id('st-all').textContent    = s.total_all_time;
-  $id('st-streak').textContent = s.current_streak  + 'd';
-  $id('st-best').textContent   = s.longest_streak  + 'd';
+  $id('st-streak').textContent = s.current_streak + 'd';
+  $id('st-best').textContent   = s.longest_streak + 'd';
   $id('st-avg').textContent    = s.avg_drinking_days || '—';
   $id('st-sober').textContent  = s.pct_sober_days  + '%';
 }
@@ -397,6 +401,7 @@ function switchView(name) {
   ['year', 'river', 'month', 'journal'].forEach(v => {
     $id(`panel-${v}`).hidden = v !== name;
   });
+  $id('journal-scrubber').hidden = name !== 'journal';
   renderCurrentView();
 }
 
@@ -457,8 +462,10 @@ function renderYearGrid() {
   const today = todayStr();
   const grid  = $id('year-grid');
 
+  const currentYear = new Date().getFullYear();
   $id('year-label').textContent = year;
-  $id('btn-year-next').disabled = year >= new Date().getFullYear();
+  $id('btn-year-next').disabled = year >= currentYear;
+  $id('btn-year-today').hidden  = year >= currentYear;
 
   const transposed = S.yearTransposed;
   grid.classList.toggle('transposed', transposed);
@@ -534,6 +541,10 @@ function initYearNav() {
       S.yearView++;
       renderYearGrid();
     }
+  });
+  $id('btn-year-today').addEventListener('click', () => {
+    S.yearView = new Date().getFullYear();
+    renderYearGrid();
   });
 }
 
@@ -860,10 +871,12 @@ function renderMonthGrid() {
   $id('month-label').textContent =
     new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
 
-  // Disable "next" if we're already at the current month
-  $id('btn-month-next').disabled =
+  // Disable "next" and show "today" based on whether we're at the current month
+  const atCurrentMonth =
     year > now.getFullYear() ||
     (year === now.getFullYear() && month >= now.getMonth());
+  $id('btn-month-next').disabled  = atCurrentMonth;
+  $id('btn-month-today').hidden   = atCurrentMonth;
 
   const grid = $id('month-grid');
 
@@ -938,6 +951,12 @@ function initMonthNav() {
       if (S.monthView > 11) { S.monthView = 0; S.yearView++; }
       if (S.view === 'month') renderMonthGrid();
     }
+  });
+  $id('btn-month-today').addEventListener('click', () => {
+    const now = new Date();
+    S.yearView  = now.getFullYear();
+    S.monthView = now.getMonth();
+    renderMonthGrid();
   });
 }
 
@@ -1085,8 +1104,8 @@ async function _commitQuickAdd() {
 
 function renderJournal() {
   const list = $id('journal-list');
+  list.style.paddingRight = '24px'; // space for side scrubber
 
-  // Filter to entries with non-empty notes, sorted newest first
   const entries = S.logs
     .filter(l => l.note && l.note.trim())
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -1094,39 +1113,145 @@ function renderJournal() {
   if (entries.length === 0) {
     list.innerHTML =
       '<p class="journal-empty">No diary entries yet.<br>Tap any day to log a note — it\'ll show up here.</p>';
+    window._journalMonths = [];
+    _buildScrubberLabels();
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  // Group by YYYY-MM, preserving newest-first order
+  const groups = new Map();
   for (const log of entries) {
-    const card = el('div', { class: `journal-card ${drinkClass(log.drinks)}`, 'data-date': log.date });
+    const key = log.date.slice(0, 7);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(log);
+  }
+  window._journalMonths = [...groups.keys()];
 
-    const d = parseDate(log.date);
-    const dateLabel = d.toLocaleDateString(undefined, {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    });
-    const drinkLabel = log.drinks === 0 ? 'dry'
-      : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
+  const frag = document.createDocumentFragment();
+  for (const [key, logs] of groups) {
+    const [y, m] = key.split('-').map(Number);
+    const monthLabel = new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    frag.appendChild(el('div', { class: 'journal-month-hdr', id: `jm-${key}` }, monthLabel));
 
-    const meta = el('div', { class: 'journal-meta' });
-    meta.appendChild(el('span', { class: 'journal-date' }, dateLabel));
-    meta.appendChild(el('span', { class: `journal-badge ${drinkClass(log.drinks)}` }, drinkLabel));
-    card.appendChild(meta);
+    for (const log of logs) {
+      const card = el('div', { class: `journal-card ${drinkClass(log.drinks)}`, 'data-date': log.date });
 
-    const noteEl = el('p', { class: 'journal-note' });
-    noteEl.textContent = log.note; // safe: textContent, not innerHTML
-    card.appendChild(noteEl);
+      const d = parseDate(log.date);
+      const dateLabel = d.toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      const drinkLabel = log.drinks === 0 ? 'dry'
+        : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
 
-    card.addEventListener('click', () => openModal(log.date));
-    frag.appendChild(card);
+      const meta = el('div', { class: 'journal-meta' });
+      meta.appendChild(el('span', { class: 'journal-date' }, dateLabel));
+      meta.appendChild(el('span', { class: `journal-badge ${drinkClass(log.drinks)}` }, drinkLabel));
+      card.appendChild(meta);
+
+      const noteEl = el('p', { class: 'journal-note' });
+      noteEl.textContent = log.note;
+      card.appendChild(noteEl);
+
+      card.addEventListener('click', () => openModal(log.date));
+      frag.appendChild(card);
+    }
   }
 
   list.replaceChildren(frag);
+  _buildScrubberLabels();
+}
+
+function _buildScrubberLabels() {
+  const scrubber = $id('journal-scrubber');
+  const months   = window._journalMonths || [];
+  if (!months.length) { scrubber.replaceChildren(); return; }
+
+  const frag = document.createDocumentFragment();
+  for (const key of months) {
+    const m = parseInt(key.split('-')[1], 10) - 1;
+    frag.appendChild(el('div', { class: 'journal-scrubber-label', 'data-key': key }, MONTHS_SHORT[m]));
+  }
+  scrubber.replaceChildren(frag);
+  _positionScrubber();
+}
+
+function _positionScrubber() {
+  const scrubber  = $id('journal-scrubber');
+  const navBottom = document.querySelector('.view-nav').getBoundingClientRect().bottom;
+  const vpH       = window.innerHeight;
+  const centerY   = navBottom + (vpH - navBottom) / 2;
+  scrubber.style.top = `${centerY}px`;
+}
+
+function initJournalScrubber() {
+  const scrubber = $id('journal-scrubber');
+
+  function monthFromY(clientY) {
+    const months = window._journalMonths || [];
+    if (!months.length) return null;
+    const rect  = scrubber.getBoundingClientRect();
+    const relY  = clientY - rect.top;
+    const slotH = rect.height / months.length;
+    const idx   = Math.max(0, Math.min(months.length - 1, Math.floor(relY / slotH)));
+    return months[idx];
+  }
+
+  function scrollToMonth(key) {
+    const hdr = $id(`jm-${key}`);
+    if (!hdr) return;
+    document.querySelector('.view-area').scrollTo({ top: hdr.offsetTop - 4, behavior: 'smooth' });
+    scrubber.querySelectorAll('.journal-scrubber-label').forEach(l => {
+      l.classList.toggle('active', l.dataset.key === key);
+    });
+  }
+
+  scrubber.addEventListener('click', e => {
+    const lbl = e.target.closest('.journal-scrubber-label');
+    if (lbl) scrollToMonth(lbl.dataset.key);
+  });
+
+  scrubber.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const key = monthFromY(e.touches[0].clientY);
+    if (key) scrollToMonth(key);
+  }, { passive: false });
+
+  scrubber.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const key = monthFromY(e.touches[0].clientY);
+    if (key) scrollToMonth(key);
+  }, { passive: false });
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   DELETE ACCOUNT
+   ACCOUNT PANEL
    ═══════════════════════════════════════════════════════════════ */
+
+function _closeAccountPanel() {
+  $id('account-panel').hidden = true;
+  _accountDeletePending = false;
+  $id('btn-delete-account').textContent = 'delete account';
+  $id('err-delete-account').textContent = '';
+}
+
+function initAccountPanel() {
+  $id('btn-account-toggle').addEventListener('click', e => {
+    e.stopPropagation();
+    const panel = $id('account-panel');
+    if (panel.hidden) {
+      panel.hidden = false;
+    } else {
+      _closeAccountPanel();
+    }
+  });
+
+  document.addEventListener('click', e => {
+    const panel = $id('account-panel');
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== $id('btn-account-toggle')) {
+      _closeAccountPanel();
+    }
+  });
+}
 
 function initDeleteAccount() {
   const btn = $id('btn-delete-account');
@@ -1142,16 +1267,11 @@ function initDeleteAccount() {
     try {
       await api.del('/api/account');
       S.user = null; S.logs = []; S.stats = null; S.map.clear();
+      $id('account-panel').hidden = true;
       showAuth();
     } catch (err) {
       $id('err-delete-account').textContent = err.message;
     }
-  });
-
-  // Reset primed state when section is toggled closed
-  document.querySelector('.account-det').addEventListener('toggle', () => {
-    _accountDeletePending = false;
-    btn.textContent = 'delete account';
   });
 }
 
@@ -1169,7 +1289,9 @@ function init() {
   initModal();
   initYearScrub();
   initQuickAdd();
+  initAccountPanel();
   initDeleteAccount();
+  initJournalScrubber();
   checkAuth();
 }
 
