@@ -381,6 +381,27 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Empty corner cell */
 .ygrid-corner { /* just a spacer */ }
 
+/* ── Transposed year grid: rows = months, columns = days 1–31 ── */
+.year-grid.transposed {
+  grid-template-columns: var(--dlw) repeat(31, var(--ch));
+  grid-auto-rows: var(--cw);
+}
+/* In transposed mode the day labels are column headers → centre them */
+.year-grid.transposed .ygrid-dlbl {
+  text-align: center;
+  padding-right: 0;
+}
+/* In transposed mode the month abbrs are row labels → right-align like day labels */
+.year-grid.transposed .ygrid-mhdr {
+  text-align: right;
+  padding-right: 4px;
+}
+
+/* Active state for transpose toggle button */
+.year-transpose-btn.active {
+  color: var(--accent);
+}
+
 /* ── Year grid cells ── */
 .ygrid-cell {
   background: var(--c-none);

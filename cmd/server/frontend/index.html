@@ -95,14 +95,14 @@
         <!-- YEAR GRID -->
         <section id="panel-year" class="view-panel" aria-label="Year grid">
           <div class="panel-controls">
-            <button id="btn-year-prev" class="icon-btn" aria-label="Previous year">←</button>
-            <span   id="year-label"   class="panel-title"></span>
-            <button id="btn-year-next" class="icon-btn" aria-label="Next year">→</button>
+            <button id="btn-year-prev"      class="icon-btn" aria-label="Previous year">←</button>
+            <span   id="year-label"         class="panel-title"></span>
+            <button id="btn-year-next"      class="icon-btn" aria-label="Next year">→</button>
+            <button id="btn-year-transpose" class="icon-btn year-transpose-btn" aria-label="Swap month/day axes" title="Swap month/day axes">⤢</button>
           </div>
           <!-- grid is built by JS; scrollable wrapper handles mobile -->
           <div class="year-scroll-outer" id="year-scroll-outer">
-            <div id="year-grid" class="year-grid" role="grid"
-                 aria-label="Yearly drink heatmap. Columns are months, rows are days."></div>
+            <div id="year-grid" class="year-grid" role="grid"></div>
           </div>
           <div class="legend" aria-label="Colour scale">
             <span class="leg-swatch sober"    title="0 drinks"   ></span>

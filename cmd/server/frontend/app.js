@@ -108,14 +108,15 @@ const api = {
    ═══════════════════════════════════════════════════════════════ */
 
 const S = {
-  user:      null,           // logged-in username string
-  logs:      [],             // array of log objects from API
-  stats:     null,           // stats object from API
-  map:       new Map(),      // date string → log object  (derived)
-  view:      'year',         // active view: 'year' | 'river' | 'month'
-  yearView:  new Date().getFullYear(),   // year shown in Year view
-  monthView: new Date().getMonth(),      // month shown in Month view (0-indexed)
-  modal:     { date: null },
+  user:           null,           // logged-in username string
+  logs:           [],             // array of log objects from API
+  stats:          null,           // stats object from API
+  map:            new Map(),      // date string → log object  (derived)
+  view:           'year',         // active view: 'year' | 'river' | 'month'
+  yearView:       new Date().getFullYear(),   // year shown in Year view
+  monthView:      new Date().getMonth(),      // month shown in Month view (0-indexed)
+  yearTransposed: localStorage.getItem('yearTransposed') === '1',  // swap X/Y axes
+  modal:          { date: null },
 };
 
 /** Rebuild the fast-lookup map from S.logs. Call after every mutation. */
@@ -406,6 +407,32 @@ function initViewTabs() {
    Mobile: loupe magnifier follows the finger (see below).
    ═══════════════════════════════════════════════════════════════ */
 
+/** Build a single year-grid cell for (month m+1, day). Returns a div element. */
+function _ygridCell(year, m, day, today) {
+  if (day > daysInMonth(year, m + 1)) {
+    return el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true' });
+  }
+  const dateStr = `${year}-${pad(m + 1)}-${pad(day)}`;
+  const log     = S.map.get(dateStr);
+  const future  = dateStr > today;
+  const isToday = dateStr === today;
+  const dc      = drinkClass(log != null ? log.drinks : null);
+
+  const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
+    .filter(Boolean).join(' ');
+  const attrs = { class: classes, 'data-date': dateStr };
+  if (!future) {
+    attrs.role     = 'gridcell';
+    attrs.tabindex = '0';
+    const drinks   = log != null ? log.drinks : null;
+    const dText    = drinks == null ? 'not logged'
+      : drinks === 0 ? 'sober'
+      : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
+    attrs['aria-label'] = `${dateStr}: ${dText}`;
+  }
+  return el('div', attrs);
+}
+
 function renderYearGrid() {
   const year  = S.yearView;
   const today = todayStr();
@@ -414,46 +441,42 @@ function renderYearGrid() {
   $id('year-label').textContent = year;
   $id('btn-year-next').disabled = year >= new Date().getFullYear();
 
+  const transposed = S.yearTransposed;
+  grid.classList.toggle('transposed', transposed);
+  $id('btn-year-transpose').classList.toggle('active', transposed);
+  grid.setAttribute('aria-label', transposed
+    ? 'Yearly drink heatmap. Rows are months, columns are days.'
+    : 'Yearly drink heatmap. Columns are months, rows are days.');
+
   const frag = document.createDocumentFragment();
 
-  // ── Header row: blank corner + month abbreviations ──
-  frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
-  for (let m = 0; m < 12; m++) {
-    frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
-  }
-
-  // ── Day rows 1–31 ──
-  for (let day = 1; day <= 31; day++) {
-    frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
-
+  if (transposed) {
+    // ── Transposed: columns = days 1–31, rows = months ──
+    // Header row: blank corner + day labels 1–31
+    frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
+    for (let day = 1; day <= 31; day++) {
+      frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
+    }
+    // Month rows
     for (let m = 0; m < 12; m++) {
-      // Days that don't exist for this month (e.g. Feb 30)
-      if (day > daysInMonth(year, m + 1)) {
-        frag.appendChild(el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true' }));
-        continue;
+      frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
+      for (let day = 1; day <= 31; day++) {
+        frag.appendChild(_ygridCell(year, m, day, today));
       }
-
-      const dateStr = `${year}-${pad(m + 1)}-${pad(day)}`;
-      const log     = S.map.get(dateStr);
-      const future  = dateStr > today;
-      const isToday = dateStr === today;
-      const dc      = drinkClass(log != null ? log.drinks : null);
-
-      const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
-        .filter(Boolean).join(' ');
-
-      const attrs = { class: classes, 'data-date': dateStr };
-      if (!future) {
-        attrs.role     = 'gridcell';
-        attrs.tabindex = '0';
-        const drinks   = log != null ? log.drinks : null;
-        const dText    = drinks == null ? 'not logged'
-          : drinks === 0 ? 'sober'
-          : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
-        attrs['aria-label'] = `${dateStr}: ${dText}`;
+    }
+  } else {
+    // ── Normal: columns = months, rows = days 1–31 ──
+    // Header row: blank corner + month abbreviations
+    frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
+    for (let m = 0; m < 12; m++) {
+      frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
+    }
+    // Day rows 1–31
+    for (let day = 1; day <= 31; day++) {
+      frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
+      for (let m = 0; m < 12; m++) {
+        frag.appendChild(_ygridCell(year, m, day, today));
       }
-
-      frag.appendChild(el('div', attrs));
     }
   }
 
@@ -472,6 +495,14 @@ function renderYearGrid() {
       openModal(cell.dataset.date);
     }
   };
+}
+
+function initYearTranspose() {
+  $id('btn-year-transpose').addEventListener('click', () => {
+    S.yearTransposed = !S.yearTransposed;
+    localStorage.setItem('yearTransposed', S.yearTransposed ? '1' : '0');
+    renderYearGrid();
+  });
 }
 
 function initYearNav() {
@@ -911,6 +942,7 @@ function init() {
   initLogout();
   initViewTabs();
   initYearNav();
+  initYearTranspose();
   initMonthNav();
   initModal();
   initLoupe();
