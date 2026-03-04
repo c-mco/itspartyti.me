@@ -11,46 +11,42 @@
 :root {
   --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* Backgrounds */
-  --bg:       #0e0e10;
-  --surface:  #17171a;
-  --surface2: #1e1e22;
-  --surface3: #252529;
+  /* Backgrounds — deep indigo-tinted dark */
+  --bg:       #0c0c16;
+  --surface:  #13131e;
+  --surface2: #1b1b2a;
+  --surface3: #232336;
 
   /* Borders */
-  --border:   #2a2a30;
-  --border2:  #35353c;
+  --border:   #2a2a42;
+  --border2:  #38385a;
 
   /* Text */
-  --text:    #e8e8f0;
-  --text-2:  #9090a8;
-  --text-3:  #5a5a72;  /* slightly more visible for grid labels */
+  --text:    #eeeef8;
+  --text-2:  #9898bc;
+  --text-3:  #6868a0;
 
   /* Danger */
-  --danger:       #b03030;
-  --danger-hover: #c43535;
+  --danger:       #f43f5e;
+  --danger-hover: #fb7185;
 
   /* Accent — vivid violet */
   --accent:  #8b5cf6;
   --accent2: #a78bfa;
 
-  /* ── Drink-level colours ── */
-  /* "none" = not logged: visible dark cell so the grid reads clearly */
-  /* "sober" = 0 drinks: rich emerald — a win worth celebrating       */
-  /* "light" = 1–2: warm amber                                        */
-  /* "moderate" = 3–4: deep orange                                    */
-  /* "heavy" = 5+: deep crimson                                       */
-  --c-none:     #1f1f2c;
-  --c-sober:    #14532d;
-  --c-light:    #92400e;
-  --c-moderate: #7c2d12;
-  --c-heavy:    #881337;
+  /* ── Drink-level colours ──────────────────────────────────────── */
+  /* Cell fills: vibrant & punchy — they're the data, they should pop */
+  --c-none:     #1e1e2e;   /* subtle dark, unlogged days                  */
+  --c-sober:    #22c55e;   /* bright green — a win worth celebrating ✓    */
+  --c-light:    #fbbf24;   /* bright amber — easy night                   */
+  --c-moderate: #f97316;   /* vivid orange — getting there                */
+  --c-heavy:    #f43f5e;   /* hot pink/rose — rough night                 */
 
-  /* Foreground accents — bright, used in legend + bubble borders */
-  --c-sober-fg:    #4ade80;
-  --c-light-fg:    #fbbf24;
-  --c-moderate-fg: #f97316;
-  --c-heavy-fg:    #f43f5e;
+  /* Text ON bright cells (month grid drink count) */
+  --c-sober-fg:    #052e16;   /* dark green on bright green   */
+  --c-light-fg:    #451a03;   /* dark brown on bright amber   */
+  --c-moderate-fg: #431407;   /* dark rust  on vivid orange   */
+  --c-heavy-fg:    #4c0519;   /* dark rose  on hot pink       */
 
   /* Sharp corners */
   --r: 2px;
@@ -709,10 +705,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .journal-card:hover { background: var(--surface2); }
 .journal-card:active { background: var(--surface2); }
-.journal-card.light    { border-left-color: var(--c-light-fg); }
-.journal-card.moderate { border-left-color: var(--c-moderate-fg); }
-.journal-card.heavy    { border-left-color: var(--c-heavy-fg); }
-.journal-card.sober    { border-left-color: #4ade80; }
+.journal-card.sober    { border-left-color: var(--c-sober); }
+.journal-card.light    { border-left-color: var(--c-light); }
+.journal-card.moderate { border-left-color: var(--c-moderate); }
+.journal-card.heavy    { border-left-color: var(--c-heavy); }
 
 .journal-meta {
   display: flex;
@@ -737,10 +733,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   background: var(--surface2);
   color: var(--text-3);
 }
-.journal-badge.light    { background: var(--c-light);    color: var(--c-light-fg); }
-.journal-badge.moderate { background: var(--c-moderate); color: var(--c-moderate-fg); }
-.journal-badge.heavy    { background: var(--c-heavy);    color: var(--c-heavy-fg); }
-.journal-badge.sober    { background: #14532d;           color: #4ade80; }
+.journal-badge.sober    { background: var(--surface3); color: var(--c-sober); }
+.journal-badge.light    { background: var(--surface3); color: var(--c-light); }
+.journal-badge.moderate { background: var(--surface3); color: var(--c-moderate); }
+.journal-badge.heavy    { background: var(--surface3); color: var(--c-heavy); }
 
 .journal-note {
   font-size: 0.9rem;
