@@ -1,485 +1,830 @@
 'use strict';
 
-// ===== API =====
+/* ═══════════════════════════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════════════════════════ */
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun',
+                      'Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_ABBR  = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+
+// River view: each day = BAR_W + BAR_GAP pixels wide
+const BAR_W    = 5;
+const BAR_GAP  = 1;
+const BAR_STEP = BAR_W + BAR_GAP;  // 6px per day
+const RIVER_MAX_H = 100;           // max bar height in px
+
+/* ═══════════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+
+/** Zero-pad a number to 2 digits. */
+const pad = n => String(n).padStart(2, '0');
+
+/** Format a Date object as YYYY-MM-DD using local time. */
+function fmtDate(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Today's date as a YYYY-MM-DD string. */
+function todayStr() { return fmtDate(new Date()); }
+
+/** Parse a YYYY-MM-DD string as a local-timezone Date (avoids UTC offset issues). */
+function parseDate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Number of days in a given month. m = 1–12. */
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+/** Is a YYYY-MM-DD date string strictly in the future? */
+function isFuture(dateStr) { return dateStr > todayStr(); }
+
+/** CSS colour-class for a drink count (null = not logged). */
+function drinkClass(n) {
+  if (n == null) return 'none';
+  if (n === 0)   return 'sober';
+  if (n <= 2)    return 'light';
+  if (n <= 4)    return 'moderate';
+  return 'heavy';
+}
+
+/** Escape HTML special characters for safe innerHTML insertion. */
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** getElementById shorthand. */
+const $id = id => document.getElementById(id);
+
+/**
+ * Create a DOM element with attributes and optional text content.
+ * Skips attributes whose value is undefined, null, or empty string.
+ */
+function el(tag, attrs = {}, text) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v !== undefined && v !== null && v !== '') e.setAttribute(k, String(v));
+  }
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   API LAYER
+   ═══════════════════════════════════════════════════════════════ */
+
+class APIError extends Error {
+  constructor(status, msg) { super(msg); this.status = status; }
+}
+
 const api = {
-  async request(method, path, body) {
-    const opts = {
+  async req(method, path, body) {
+    const init = {
       method,
-      headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
     };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    const res = await fetch(path, opts);
+    if (body != null) init.body = JSON.stringify(body);
+    const res  = await fetch(path, init);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new APIError(res.status, data.error || 'Request failed');
     return data;
   },
-  get:    (path)        => api.request('GET', path),
-  post:   (path, body)  => api.request('POST', path, body),
-  delete: (path)        => api.request('DELETE', path),
+  get:  p     => api.req('GET',    p),
+  post: (p,b) => api.req('POST',   p, b),
+  del:  p     => api.req('DELETE', p),
 };
 
-class APIError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
+/* ═══════════════════════════════════════════════════════════════
+   APPLICATION STATE
+   All views read from this shared object — data is loaded once
+   on login and mutated in-place after saves/deletes.
+   ═══════════════════════════════════════════════════════════════ */
+
+const S = {
+  user:      null,           // logged-in username string
+  logs:      [],             // array of log objects from API
+  stats:     null,           // stats object from API
+  map:       new Map(),      // date string → log object  (derived)
+  view:      'year',         // active view: 'year' | 'river' | 'month'
+  yearView:  new Date().getFullYear(),   // year shown in Year view
+  monthView: new Date().getMonth(),      // month shown in Month view (0-indexed)
+  modal:     { date: null },
+};
+
+/** Rebuild the fast-lookup map from S.logs. Call after every mutation. */
+function rebuildMap() {
+  S.map = new Map(S.logs.map(l => [l.date, l]));
 }
 
-// ===== State =====
-const state = {
-  user: null,
-  logs: [],      // array of {date, drinks, note}
-  stats: null,
-  currentYear: new Date().getFullYear(),
-  currentMonth: new Date().getMonth(), // 0-indexed
-  chart: null,
-  modalDate: null,
-};
+/* ═══════════════════════════════════════════════════════════════
+   AUTH SCREEN
+   ═══════════════════════════════════════════════════════════════ */
 
-// ===== DOM helpers =====
-const $ = id => document.getElementById(id);
-const show = el => el.removeAttribute('hidden');
-const hide = el => el.setAttribute('hidden', '');
-const setError = (el, msg) => { el.textContent = msg || ''; };
+function showAuth() {
+  $id('main-screen').hidden = true;
+  $id('auth-screen').hidden = false;
+}
 
-// ===== Auth =====
+function showMain() {
+  $id('auth-screen').hidden = true;
+  $id('main-screen').hidden = false;
+  $id('header-username').textContent = S.user;
+  loadAllData();
+}
+
 async function checkAuth() {
   try {
-    const data = await api.get('/api/me');
-    state.user = data.username;
-    showMainScreen();
+    const d = await api.get('/api/me');
+    S.user = d.username;
+    showMain();
   } catch {
-    showAuthScreen();
+    showAuth();
   }
 }
 
-function showAuthScreen() {
-  hide($('main-screen'));
-  show($('auth-screen'));
+function initAuthForms() {
+  // Tab switching
+  $id('auth-screen').querySelectorAll('.auth-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $id('auth-screen').querySelectorAll('.auth-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const tab = btn.dataset.tab;
+      $id('panel-login').hidden    = tab !== 'login';
+      $id('panel-register').hidden = tab !== 'register';
+    });
+  });
+
+  // Login
+  $id('form-login').addEventListener('submit', async e => {
+    e.preventDefault();
+    const submit = e.target.querySelector('[type=submit]');
+    const errEl  = $id('err-login');
+    errEl.textContent = '';
+    submit.disabled   = true;
+    try {
+      const d = await api.post('/api/login', {
+        username: $id('login-user').value.trim(),
+        password: $id('login-pass').value,
+      });
+      S.user = d.username;
+      showMain();
+    } catch (err) {
+      errEl.textContent = err.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  // Register → auto-login
+  $id('form-register').addEventListener('submit', async e => {
+    e.preventDefault();
+    const submit = e.target.querySelector('[type=submit]');
+    const errEl  = $id('err-register');
+    errEl.textContent = '';
+    submit.disabled   = true;
+    try {
+      const username = $id('reg-user').value.trim();
+      const password = $id('reg-pass').value;
+      await api.post('/api/register', { username, password });
+      const d = await api.post('/api/login', { username, password });
+      S.user = d.username;
+      showMain();
+    } catch (err) {
+      errEl.textContent = err.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
 }
 
-function showMainScreen() {
-  hide($('auth-screen'));
-  show($('main-screen'));
-  $('header-username').textContent = state.user;
-  loadData();
+function initLogout() {
+  $id('btn-logout').addEventListener('click', async () => {
+    try { await api.post('/api/logout'); } catch { /* ignore */ }
+    S.user = null; S.logs = []; S.stats = null; S.map.clear();
+    showAuth();
+  });
 }
 
-async function loadData() {
+/* ═══════════════════════════════════════════════════════════════
+   DATA LOADING
+   Load logs + stats once on login. All views use S.map.
+   ═══════════════════════════════════════════════════════════════ */
+
+async function loadAllData() {
   try {
     const [logs, stats] = await Promise.all([
       api.get('/api/logs'),
       api.get('/api/stats'),
     ]);
-    state.logs = logs || [];
-    state.stats = stats;
-    renderCalendar();
+    S.logs  = logs  || [];
+    S.stats = stats;
+    rebuildMap();
+    renderCurrentView();
     renderStats();
-    renderChart();
   } catch (e) {
-    console.error('loadData failed', e);
+    console.error('loadAllData:', e);
   }
 }
 
-function logsMap() {
-  const m = new Map();
-  for (const l of state.logs) m.set(l.date, l);
-  return m;
+/** Refresh only the stats strip (after a save or delete). */
+async function refreshStats() {
+  try {
+    S.stats = await api.get('/api/stats');
+    renderStats();
+  } catch { /* ignore */ }
 }
 
-// ===== Auth forms =====
-function initAuthForms() {
-  // Tabs
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-      });
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
+/* ── In-memory log mutations (no re-fetch needed) ── */
 
-      const target = tab.dataset.tab;
-      $('login-panel').hidden   = target !== 'login';
-      $('register-panel').hidden = target !== 'register';
-    });
-  });
-
-  // Login
-  $('login-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const btn = e.target.querySelector('[type=submit]');
-    const errEl = $('login-error');
-    setError(errEl, '');
-    btn.disabled = true;
-
-    try {
-      const data = await api.post('/api/login', {
-        username: $('login-username').value.trim(),
-        password: $('login-password').value,
-      });
-      state.user = data.username;
-      showMainScreen();
-    } catch (err) {
-      setError(errEl, err.message);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  // Register
-  $('register-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const btn = e.target.querySelector('[type=submit]');
-    const errEl = $('register-error');
-    setError(errEl, '');
-    btn.disabled = true;
-
-    try {
-      await api.post('/api/register', {
-        username: $('reg-username').value.trim(),
-        password: $('reg-password').value,
-      });
-      // Auto login
-      const data = await api.post('/api/login', {
-        username: $('reg-username').value.trim(),
-        password: $('reg-password').value,
-      });
-      state.user = data.username;
-      showMainScreen();
-    } catch (err) {
-      setError(errEl, err.message);
-    } finally {
-      btn.disabled = false;
-    }
-  });
+function applyLogSave(log) {
+  const i = S.logs.findIndex(l => l.date === log.date);
+  if (i >= 0) S.logs[i] = log;
+  else        S.logs.push(log);
+  rebuildMap();
 }
 
-// ===== Logout =====
-function initLogout() {
-  $('logout-btn').addEventListener('click', async () => {
-    try { await api.post('/api/logout'); } catch {}
-    state.user = null;
-    state.logs = [];
-    state.stats = null;
-    if (state.chart) { state.chart.destroy(); state.chart = null; }
-    showAuthScreen();
-  });
+function applyLogDelete(date) {
+  S.logs = S.logs.filter(l => l.date !== date);
+  rebuildMap();
 }
 
-// ===== Calendar =====
-function renderCalendar() {
-  const grid = $('calendar-grid');
-  // Remove existing day cells (keep 7 header cells)
-  const headers = Array.from(grid.querySelectorAll('.day-header'));
-  grid.innerHTML = '';
-  headers.forEach(h => grid.appendChild(h));
+/* ═══════════════════════════════════════════════════════════════
+   LOG MODAL  (shared by all three views)
+   ═══════════════════════════════════════════════════════════════ */
 
-  const year = state.currentYear;
-  const month = state.currentMonth;
+let _saving = false;
 
-  const label = new Date(year, month, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-  $('month-label').textContent = label;
-
-  // First day of month (0=Sun..6=Sat), convert to Mon-first (0=Mon..6=Sun)
-  const firstDay = new Date(year, month, 1).getDay();
-  const offset = (firstDay + 6) % 7; // offset empty slots at start
-
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  const todayStr = formatDate(today);
-  const map = logsMap();
-
-  // Empty slots before first day
-  for (let i = 0; i < offset; i++) {
-    const el = document.createElement('div');
-    el.className = 'day-cell empty-slot';
-    el.setAttribute('aria-hidden', 'true');
-    grid.appendChild(el);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const log = map.get(dateStr);
-    const isFuture = dateStr > todayStr;
-    const isToday = dateStr === todayStr;
-
-    const cell = document.createElement('div');
-    cell.className = 'day-cell';
-    cell.setAttribute('role', 'gridcell');
-    cell.dataset.date = dateStr;
-
-    if (isToday) cell.classList.add('today');
-
-    if (isFuture) {
-      cell.classList.add('future');
-      cell.setAttribute('aria-disabled', 'true');
-    } else {
-      cell.setAttribute('tabindex', '0');
-    }
-
-    const numEl = document.createElement('span');
-    numEl.className = 'day-num';
-    numEl.textContent = d;
-    cell.appendChild(numEl);
-
-    if (log !== undefined) {
-      const drinks = log.drinks;
-      cell.classList.add(drinkClass(drinks));
-
-      const drinksEl = document.createElement('span');
-      drinksEl.className = 'day-drinks';
-      drinksEl.textContent = drinks;
-      cell.appendChild(drinksEl);
-
-      const drinkWord = drinks === 1 ? 'drink' : 'drinks';
-      cell.setAttribute('aria-label', `${dateStr}: ${drinks} ${drinkWord}${log.note ? ', ' + log.note : ''}`);
-    } else if (!isFuture) {
-      cell.setAttribute('aria-label', `${dateStr}: not logged. Click to log.`);
-    }
-
-    if (!isFuture) {
-      cell.addEventListener('click', () => openModal(dateStr));
-      cell.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openModal(dateStr);
-        }
-      });
-    }
-
-    grid.appendChild(cell);
-  }
-}
-
-function drinkClass(n) {
-  if (n === 0) return 'sober';
-  if (n <= 2)  return 'low';
-  if (n <= 4)  return 'mid';
-  return 'high';
-}
-
-function formatDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// ===== Month navigation =====
-function initMonthNav() {
-  $('prev-month').addEventListener('click', () => {
-    state.currentMonth--;
-    if (state.currentMonth < 0) {
-      state.currentMonth = 11;
-      state.currentYear--;
-    }
-    renderCalendar();
-  });
-
-  $('next-month').addEventListener('click', () => {
-    const now = new Date();
-    if (state.currentYear < now.getFullYear() ||
-        (state.currentYear === now.getFullYear() && state.currentMonth < now.getMonth())) {
-      state.currentMonth++;
-      if (state.currentMonth > 11) {
-        state.currentMonth = 0;
-        state.currentYear++;
-      }
-      renderCalendar();
-    }
-  });
-}
-
-// ===== Stats =====
-function renderStats() {
-  const s = state.stats;
-  if (!s) return;
-
-  $('stat-week').textContent  = s.total_this_week;
-  $('stat-month').textContent = s.total_this_month;
-  $('stat-all').textContent   = s.total_all_time;
-
-  $('stat-streak').textContent = s.current_streak + (s.current_streak === 1 ? ' day' : ' days');
-  if (s.longest_streak > 0) {
-    $('stat-streak-sub').textContent = `best: ${s.longest_streak}d`;
-  }
-
-  $('stat-avg').textContent   = s.avg_drinking_days || '—';
-  $('stat-sober').textContent = s.pct_sober_days + '%';
-}
-
-// ===== Chart =====
-function renderChart() {
-  const s = state.stats;
-  if (!s || !s.weekly_totals) return;
-
-  const labels = s.weekly_totals.map(w => {
-    const d = new Date(w.week_start + 'T00:00:00');
-    return d.toLocaleString('default', { month: 'short', day: 'numeric' });
-  });
-  const data = s.weekly_totals.map(w => w.total);
-
-  if (state.chart) {
-    state.chart.data.labels = labels;
-    state.chart.data.datasets[0].data = data;
-    state.chart.update();
-    return;
-  }
-
-  const ctx = $('trend-chart').getContext('2d');
-  state.chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Drinks',
-        data,
-        backgroundColor: '#6c63ff88',
-        borderColor: '#6c63ff',
-        borderWidth: 1,
-        borderRadius: 4,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: items => 'Week of ' + items[0].label,
-            label: item => item.raw + ' drinks',
-          },
-        },
-      },
-      scales: {
-        x: {
-          ticks: { color: '#888899', font: { size: 10 } },
-          grid: { color: '#2e2e3e' },
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: '#888899', stepSize: 1 },
-          grid: { color: '#2e2e3e' },
-        },
-      },
-    },
-  });
-}
-
-// ===== Modal =====
 function openModal(dateStr) {
-  state.modalDate = dateStr;
-  $('modal-date').textContent = new Date(dateStr + 'T00:00:00').toLocaleDateString('default', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
+  if (isFuture(dateStr)) return;
+  S.modal.date = dateStr;
 
-  const log = logsMap().get(dateStr);
-  $('drinks-input').value = log ? log.drinks : 0;
-  $('note-input').value = log ? log.note || '' : '';
-  setError($('log-error'), '');
+  const log = S.map.get(dateStr);
+  $id('modal-date').textContent =
+    parseDate(dateStr).toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+  $id('input-drinks').value     = log ? log.drinks : 0;
+  $id('input-note').value       = log ? (log.note  || '') : '';
+  $id('modal-err').textContent  = '';
+  $id('btn-modal-delete').hidden = !log;
 
-  const deleteBtn = $('modal-delete');
-  if (log) {
-    show(deleteBtn);
-  } else {
-    hide(deleteBtn);
-  }
-
-  show($('log-modal'));
-  $('drinks-input').focus();
+  $id('modal').hidden = false;
+  $id('input-drinks').focus();
 }
 
 function closeModal() {
-  hide($('log-modal'));
-  state.modalDate = null;
+  $id('modal').hidden = true;
+  S.modal.date = null;
 }
 
 function initModal() {
-  $('modal-cancel').addEventListener('click', closeModal);
+  $id('btn-modal-close').addEventListener('click',  closeModal);
+  $id('btn-modal-cancel').addEventListener('click', closeModal);
 
-  $('log-modal').addEventListener('click', e => {
-    if (e.target === $('log-modal')) closeModal();
+  $id('modal').addEventListener('click', e => {
+    if (e.target === $id('modal')) closeModal();
   });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !$('log-modal').hidden) closeModal();
+    if (e.key === 'Escape' && !$id('modal').hidden) closeModal();
   });
 
-  // Stepper
-  $('drinks-dec').addEventListener('click', () => {
-    const v = parseInt($('drinks-input').value, 10) || 0;
-    $('drinks-input').value = Math.max(0, v - 1);
+  // Drink count stepper
+  $id('btn-dec').addEventListener('click', () => {
+    const v = parseInt($id('input-drinks').value, 10) || 0;
+    $id('input-drinks').value = Math.max(0, v - 1);
   });
-  $('drinks-inc').addEventListener('click', () => {
-    const v = parseInt($('drinks-input').value, 10) || 0;
-    $('drinks-input').value = Math.min(100, v + 1);
+  $id('btn-inc').addEventListener('click', () => {
+    const v = parseInt($id('input-drinks').value, 10) || 0;
+    $id('input-drinks').value = Math.min(100, v + 1);
   });
 
-  // Save — debounced to prevent double submit
-  let saving = false;
-  $('log-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    if (saving) return;
-    saving = true;
-
-    const drinks = parseInt($('drinks-input').value, 10);
+  // Save — debounced with _saving flag
+  $id('btn-modal-save').addEventListener('click', async () => {
+    if (_saving) return;
+    const drinks = parseInt($id('input-drinks').value, 10);
     if (isNaN(drinks) || drinks < 0 || drinks > 100) {
-      setError($('log-error'), 'Drinks must be 0–100');
-      saving = false;
+      $id('modal-err').textContent = 'Enter a number from 0 to 100.';
       return;
     }
-
+    _saving = true;
     try {
-      await api.post('/api/logs', {
-        date: state.modalDate,
+      const saved = await api.post('/api/logs', {
+        date:   S.modal.date,
         drinks,
-        note: $('note-input').value.trim(),
+        note:   $id('input-note').value.trim(),
       });
+      applyLogSave(saved); // update S.map immediately
       closeModal();
-      await loadData();
+      renderCurrentView(); // re-render from updated map — no reload
+      refreshStats();
     } catch (err) {
-      setError($('log-error'), err.message);
+      $id('modal-err').textContent = err.message;
     } finally {
-      saving = false;
+      _saving = false;
     }
   });
 
   // Delete entry
-  $('modal-delete').addEventListener('click', async () => {
+  $id('btn-modal-delete').addEventListener('click', async () => {
     if (!confirm('Delete this entry?')) return;
     try {
-      await api.delete(`/api/logs/${state.modalDate}`);
+      await api.del(`/api/logs/${S.modal.date}`);
+      applyLogDelete(S.modal.date);
       closeModal();
-      await loadData();
+      renderCurrentView();
+      refreshStats();
     } catch (err) {
-      setError($('log-error'), err.message);
+      $id('modal-err').textContent = err.message;
     }
   });
 }
 
-// ===== Delete account =====
+/* ═══════════════════════════════════════════════════════════════
+   STATS STRIP
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderStats() {
+  const s = S.stats;
+  if (!s) return;
+  $id('st-week').textContent   = s.total_this_week;
+  $id('st-month').textContent  = s.total_this_month;
+  $id('st-all').textContent    = s.total_all_time;
+  $id('st-streak').textContent = s.current_streak  + 'd';
+  $id('st-best').textContent   = s.longest_streak  + 'd';
+  $id('st-avg').textContent    = s.avg_drinking_days || '—';
+  $id('st-sober').textContent  = s.pct_sober_days  + '%';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW ROUTING
+   ═══════════════════════════════════════════════════════════════ */
+
+function switchView(name) {
+  if (S.view === name) return;
+  S.view = name;
+  document.querySelectorAll('.view-tab').forEach(btn => {
+    const active = btn.dataset.view === name;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  ['year', 'river', 'month'].forEach(v => {
+    $id(`panel-${v}`).hidden = v !== name;
+  });
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  switch (S.view) {
+    case 'year':  renderYearGrid();  break;
+    case 'river': renderRiver();     break;
+    case 'month': renderMonthGrid(); break;
+  }
+}
+
+function initViewTabs() {
+  document.querySelectorAll('.view-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW: YEAR GRID
+   Rows = days 1–31, columns = months Jan–Dec.
+   Colour encodes drink level per cell.
+   Mobile: loupe magnifier follows the finger (see below).
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderYearGrid() {
+  const year  = S.yearView;
+  const today = todayStr();
+  const grid  = $id('year-grid');
+
+  $id('year-label').textContent = year;
+  $id('btn-year-next').disabled = year >= new Date().getFullYear();
+
+  const frag = document.createDocumentFragment();
+
+  // ── Header row: blank corner + month abbreviations ──
+  frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
+  for (let m = 0; m < 12; m++) {
+    frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
+  }
+
+  // ── Day rows 1–31 ──
+  for (let day = 1; day <= 31; day++) {
+    frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
+
+    for (let m = 0; m < 12; m++) {
+      // Days that don't exist for this month (e.g. Feb 30)
+      if (day > daysInMonth(year, m + 1)) {
+        frag.appendChild(el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true' }));
+        continue;
+      }
+
+      const dateStr = `${year}-${pad(m + 1)}-${pad(day)}`;
+      const log     = S.map.get(dateStr);
+      const future  = dateStr > today;
+      const isToday = dateStr === today;
+      const dc      = drinkClass(log != null ? log.drinks : null);
+
+      const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
+        .filter(Boolean).join(' ');
+
+      const attrs = { class: classes, 'data-date': dateStr };
+      if (!future) {
+        attrs.role     = 'gridcell';
+        attrs.tabindex = '0';
+        const drinks   = log != null ? log.drinks : null;
+        const dText    = drinks == null ? 'not logged'
+          : drinks === 0 ? 'sober'
+          : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
+        attrs['aria-label'] = `${dateStr}: ${dText}`;
+      }
+
+      frag.appendChild(el('div', attrs));
+    }
+  }
+
+  grid.replaceChildren(frag);
+
+  // Event delegation — one handler for the whole grid
+  grid.onclick = e => {
+    const cell = e.target.closest('.ygrid-cell[data-date]');
+    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
+  };
+  grid.onkeydown = e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const cell = e.target.closest('.ygrid-cell[data-date]');
+    if (cell && !cell.classList.contains('future')) {
+      e.preventDefault();
+      openModal(cell.dataset.date);
+    }
+  };
+}
+
+function initYearNav() {
+  $id('btn-year-prev').addEventListener('click', () => {
+    S.yearView--;
+    renderYearGrid();
+  });
+  $id('btn-year-next').addEventListener('click', () => {
+    if (S.yearView < new Date().getFullYear()) {
+      S.yearView++;
+      renderYearGrid();
+    }
+  });
+}
+
+/* ─── Loupe: mobile magnifier ─────────────────────────────────
+   When the user holds or drags a finger across the year grid, a
+   floating card appears above their finger showing the date and
+   drink count — so the thumb doesn't obscure the cell.
+   A minimal-movement touch (< 8px) is treated as a tap → opens modal.
+   ─────────────────────────────────────────────────────────────── */
+
+let _lTouching = false;
+let _lTimer    = null;
+let _lStartX   = 0;
+let _lStartY   = 0;
+let _lMoved    = false;
+
+function initLoupe() {
+  // Attach to the static scroll wrapper, not the rebuilt grid
+  const wrap = $id('year-scroll-outer');
+  wrap.addEventListener('touchstart',  _lTouchStart, { passive: true });
+  wrap.addEventListener('touchmove',   _lTouchMove,  { passive: true });
+  wrap.addEventListener('touchend',    _lTouchEnd);
+  wrap.addEventListener('touchcancel', _lTouchEnd);
+}
+
+function _lTouchStart(e) {
+  const t   = e.touches[0];
+  _lTouching = true;
+  _lStartX   = t.clientX;
+  _lStartY   = t.clientY;
+  _lMoved    = false;
+  clearTimeout(_lTimer);
+  // Small delay so fast taps don't flash the loupe
+  _lTimer = setTimeout(() => {
+    if (_lTouching) _loupeShow(t.clientX, t.clientY);
+  }, 80);
+}
+
+function _lTouchMove(e) {
+  const t  = e.touches[0];
+  if (Math.abs(t.clientX - _lStartX) > 8 || Math.abs(t.clientY - _lStartY) > 8) {
+    _lMoved = true;
+  }
+  if (_lTouching) _loupeShow(t.clientX, t.clientY);
+}
+
+function _lTouchEnd(e) {
+  clearTimeout(_lTimer);
+  _lTouching = false;
+  _loupeHide();
+  // Tap = finger barely moved → open the modal
+  if (!_lMoved) {
+    const t    = e.changedTouches[0];
+    const cell = document.elementFromPoint(t.clientX, t.clientY)
+                          ?.closest('.ygrid-cell[data-date]');
+    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
+  }
+}
+
+function _loupeShow(x, y) {
+  const target = document.elementFromPoint(x, y);
+  const cell   = target?.closest('.ygrid-cell[data-date]');
+  if (!cell) { _loupeHide(); return; }
+
+  const dateStr    = cell.dataset.date;
+  const log        = S.map.get(dateStr);
+  const d          = parseDate(dateStr);
+  const dc         = drinkClass(log != null ? log.drinks : null);
+
+  const dateLabel  = d.toLocaleDateString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+  const drinkLabel = log == null   ? 'not logged'
+    : log.drinks === 0             ? 'sober'
+    : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
+  const noteHtml   = log?.note
+    ? `<span class="loupe-note">${esc(log.note.slice(0, 60))}</span>`
+    : '';
+
+  const loupe = $id('loupe');
+  loupe.className = `loupe ${dc}`;
+  loupe.innerHTML = `
+    <span class="loupe-date">${esc(dateLabel)}</span>
+    <span class="loupe-count">${esc(drinkLabel)}</span>
+    ${noteHtml}
+  `;
+
+  // Clamp position so the loupe stays within the viewport
+  const W = 160, margin = 12;
+  let lx = x - W / 2;
+  let ly = y - 85;
+  lx = Math.max(margin, Math.min(window.innerWidth - W - margin, lx));
+  if (ly < margin) ly = y + 32; // flip below if near the top edge
+
+  loupe.style.left  = `${lx}px`;
+  loupe.style.top   = `${ly}px`;
+  loupe.style.width = `${W}px`;
+  loupe.hidden = false;
+}
+
+function _loupeHide() {
+  $id('loupe').hidden = true;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW: TIMELINE RIVER
+   Every day of the current year as a vertical bar.
+   Bar height is proportional to drink count.
+   Scrolls horizontally — automatically positions today ~25% from left.
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderRiver() {
+  const year  = new Date().getFullYear(); // river always shows current year
+  const today = todayStr();
+
+  // Auto-scale: use max drinks in data, minimum 5
+  let maxDrinks = 0;
+  S.logs.forEach(l => { if (l.drinks > maxDrinks) maxDrinks = l.drinks; });
+  const scale = Math.max(maxDrinks, 5);
+
+  const barsEl   = $id('river-bars');
+  const monthsEl = $id('river-months');
+  const yEl      = $id('river-y');
+
+  // ── Y axis ticks ──
+  const yFrag = document.createDocumentFragment();
+  yEl.style.height = `${RIVER_MAX_H + 20}px`; // bars + month label row below
+  const tickStep = Math.max(1, Math.ceil(scale / 4));
+  for (let v = scale; v >= 0; v -= tickStep) {
+    yFrag.appendChild(el('span', { class: 'river-y-tick' }, v));
+  }
+  yEl.replaceChildren(yFrag);
+
+  // ── Bars and month labels ──
+  const barFrag   = document.createDocumentFragment();
+  const monthFrag = document.createDocumentFragment();
+  let todayIndex  = -1;
+  let dayIndex    = 0;
+
+  for (let m = 0; m < 12; m++) {
+    const days = daysInMonth(year, m + 1);
+
+    // Month label — width matches the number of bars for that month
+    const label = el('div', { class: 'river-month-label' }, MONTHS_SHORT[m]);
+    label.style.width    = `${days * BAR_STEP}px`;
+    label.style.minWidth = `${days * BAR_STEP}px`;
+    monthFrag.appendChild(label);
+
+    for (let d = 1; d <= days; d++) {
+      const dateStr = `${year}-${pad(m + 1)}-${pad(d)}`;
+      const log     = S.map.get(dateStr);
+      const future  = dateStr > today;
+      const isToday = dateStr === today;
+
+      if (isToday) todayIndex = dayIndex;
+
+      // Determine bar height and colour class
+      let h, dc;
+      if (future) {
+        h = 2; dc = 'future';
+      } else if (log == null) {
+        h = 2; dc = 'none';         // unlogged: thin stub, barely visible
+      } else if (log.drinks === 0) {
+        h = 4; dc = 'sober';        // sober: small but distinct
+      } else {
+        h  = Math.max(6, Math.round((log.drinks / scale) * RIVER_MAX_H));
+        dc = drinkClass(log.drinks);
+      }
+
+      const bar = el('div', {
+        class:       `river-bar ${dc}${isToday ? ' is-today' : ''}`,
+        'data-date': dateStr,
+        role:        future ? undefined : 'button',
+        tabindex:    future ? '-1' : '0',
+        'aria-label': future ? undefined : (() => {
+          const dl = parseDate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          const dk = log == null ? 'not logged'
+            : log.drinks === 0   ? 'sober'
+            : `${log.drinks} drinks`;
+          return `${dl}: ${dk}`;
+        })(),
+      });
+      bar.style.height = `${h}px`;
+      barFrag.appendChild(bar);
+      dayIndex++;
+    }
+  }
+
+  barsEl.replaceChildren(barFrag);
+  monthsEl.replaceChildren(monthFrag);
+
+  // Event delegation
+  barsEl.onclick = e => {
+    const bar = e.target.closest('.river-bar[data-date]');
+    if (bar && !bar.classList.contains('future')) openModal(bar.dataset.date);
+  };
+  barsEl.onkeydown = e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const bar = e.target.closest('.river-bar[data-date]');
+    if (bar && !bar.classList.contains('future')) {
+      e.preventDefault();
+      openModal(bar.dataset.date);
+    }
+  };
+
+  // Scroll so today is visible ~25% from the left
+  if (todayIndex >= 0) {
+    requestAnimationFrame(() => {
+      const scroll = $id('river-scroll');
+      scroll.scrollLeft = Math.max(0, todayIndex * BAR_STEP - scroll.clientWidth * 0.25);
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW: MONTH GRID
+   Standard Mon–Sun calendar. Drink count shown in each cell.
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderMonthGrid() {
+  const year  = S.yearView;
+  const month = S.monthView;   // 0-indexed
+  const today = todayStr();
+  const now   = new Date();
+
+  $id('month-label').textContent =
+    new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+  // Disable "next" if we're already at the current month
+  $id('btn-month-next').disabled =
+    year > now.getFullYear() ||
+    (year === now.getFullYear() && month >= now.getMonth());
+
+  const grid = $id('month-grid');
+
+  // Keep the 7 static header cells; clear everything else
+  const headers = Array.from(grid.querySelectorAll('.mcell-hdr'));
+  grid.replaceChildren(...headers);
+
+  // Empty offset slots (Monday = 0, …, Sunday = 6)
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+  const frag   = document.createDocumentFragment();
+
+  for (let i = 0; i < offset; i++) {
+    frag.appendChild(el('div', { class: 'mcell empty', 'aria-hidden': 'true' }));
+  }
+
+  const total = daysInMonth(year, month + 1);
+  for (let d = 1; d <= total; d++) {
+    const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+    const log     = S.map.get(dateStr);
+    const future  = dateStr > today;
+    const isToday = dateStr === today;
+    const dc      = drinkClass(log != null ? log.drinks : null);
+
+    const classes = ['mcell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
+      .filter(Boolean).join(' ');
+    const attrs   = { class: classes, 'data-date': dateStr };
+
+    if (!future) {
+      attrs.role     = 'gridcell';
+      attrs.tabindex = '0';
+      const dText    = log == null ? 'not logged'
+        : log.drinks === 0 ? 'sober'
+        : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
+      attrs['aria-label'] = `${dateStr}: ${dText}`;
+    }
+
+    const cell = el('div', attrs);
+    cell.appendChild(el('span', { class: 'mcell-num', 'aria-hidden': 'true' }, d));
+    if (log != null) {
+      cell.appendChild(el('span', { class: 'mcell-drinks', 'aria-hidden': 'true' }, log.drinks));
+    }
+    frag.appendChild(cell);
+  }
+
+  grid.appendChild(frag);
+
+  // Event delegation
+  grid.onclick = e => {
+    const cell = e.target.closest('.mcell[data-date]');
+    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
+  };
+  grid.onkeydown = e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const cell = e.target.closest('.mcell[data-date]');
+    if (cell && !cell.classList.contains('future')) {
+      e.preventDefault();
+      openModal(cell.dataset.date);
+    }
+  };
+}
+
+function initMonthNav() {
+  $id('btn-month-prev').addEventListener('click', () => {
+    S.monthView--;
+    if (S.monthView < 0) { S.monthView = 11; S.yearView--; }
+    if (S.view === 'month') renderMonthGrid();
+  });
+  $id('btn-month-next').addEventListener('click', () => {
+    const now      = new Date();
+    const atLimit  =
+      S.yearView > now.getFullYear() ||
+      (S.yearView === now.getFullYear() && S.monthView >= now.getMonth());
+    if (!atLimit) {
+      S.monthView++;
+      if (S.monthView > 11) { S.monthView = 0; S.yearView++; }
+      if (S.view === 'month') renderMonthGrid();
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DELETE ACCOUNT
+   ═══════════════════════════════════════════════════════════════ */
+
 function initDeleteAccount() {
-  $('delete-account-btn').addEventListener('click', async () => {
-    if (!confirm('Permanently delete your account and all logs? This cannot be undone.')) return;
+  $id('btn-delete-account').addEventListener('click', async () => {
+    if (!confirm('Delete your account and all logs permanently?\nThis cannot be undone.')) return;
     try {
-      await api.delete('/api/account');
-      state.user = null;
-      state.logs = [];
-      state.stats = null;
-      if (state.chart) { state.chart.destroy(); state.chart = null; }
-      showAuthScreen();
+      await api.del('/api/account');
+      S.user = null; S.logs = []; S.stats = null; S.map.clear();
+      showAuth();
     } catch (err) {
       alert('Error: ' + err.message);
     }
   });
 }
 
-// ===== Init =====
+/* ═══════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════ */
+
 function init() {
   initAuthForms();
   initLogout();
+  initViewTabs();
+  initYearNav();
   initMonthNav();
   initModal();
+  initLoupe();
   initDeleteAccount();
   checkAuth();
 }
