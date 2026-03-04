@@ -113,10 +113,8 @@ const S = {
   logs:           [],             // array of log objects from API
   stats:          null,           // stats object from API
   map:            new Map(),      // date string → log object  (derived)
-  view:           'year',         // active view: 'year' | 'river' | 'month'
+  view:           'year',         // active view: 'year' | 'river' | 'journal'
   yearView:       new Date().getFullYear(),   // year shown in Year view
-  monthView:      new Date().getMonth(),      // month shown in Month view (0-indexed)
-  yearTransposed: localStorage.getItem('yearTransposed') === '1',  // swap X/Y axes
   modal:          { date: null },
 };
 
@@ -405,7 +403,7 @@ function switchView(name) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-  ['year', 'river', 'month', 'journal'].forEach(v => {
+  ['year', 'river', 'journal'].forEach(v => {
     $id(`panel-${v}`).hidden = v !== name;
   });
   $id('journal-scrubber').hidden = name !== 'journal';
@@ -416,7 +414,6 @@ function renderCurrentView() {
   switch (S.view) {
     case 'year':    renderYearGrid();  break;
     case 'river':   renderRiver();     break;
-    case 'month':   renderMonthGrid(); break;
     case 'journal': renderJournal();   break;
   }
 }
@@ -434,88 +431,84 @@ function initViewTabs() {
    Mobile: loupe magnifier follows the finger (see below).
    ═══════════════════════════════════════════════════════════════ */
 
-/**
- * Build a single year-grid cell for (month m+1, day).
- * row/col are the logical grid coordinates used for magnification distance math.
- */
-function _ygridCell(year, m, day, today, row, col) {
-  if (day > daysInMonth(year, m + 1)) {
-    return el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true',
-                       'data-row': row, 'data-col': col });
-  }
-  const dateStr = `${year}-${pad(m + 1)}-${pad(day)}`;
-  const log     = S.map.get(dateStr);
-  const future  = dateStr > today;
-  const isToday = dateStr === today;
-  const dc      = drinkClass(log != null ? log.drinks : null);
-
-  const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
-    .filter(Boolean).join(' ');
-  const attrs = { class: classes, 'data-date': dateStr, 'data-row': row, 'data-col': col };
-  if (!future) {
-    attrs.role     = 'gridcell';
-    attrs.tabindex = '0';
-    const drinks   = log != null ? log.drinks : null;
-    const dText    = drinks == null ? 'not logged'
-      : drinks === 0 ? 'sober'
-      : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
-    attrs['aria-label'] = `${dateStr}: ${dText}`;
-  }
-  return el('div', attrs);
-}
-
 function renderYearGrid() {
-  const year  = S.yearView;
-  const today = todayStr();
-  const grid  = $id('year-grid');
-
+  const year        = S.yearView;
+  const today       = todayStr();
   const currentYear = new Date().getFullYear();
+  const currentMon  = new Date().getMonth(); // 0-indexed
+
   $id('year-label').textContent = year;
   $id('btn-year-next').disabled = year >= currentYear;
   $id('btn-year-today').hidden  = year >= currentYear;
 
-  const transposed = S.yearTransposed;
-  grid.classList.toggle('transposed', transposed);
-  $id('btn-year-transpose').classList.toggle('active', transposed);
-  grid.setAttribute('aria-label', transposed
-    ? 'Yearly drink heatmap. Rows are months, columns are days.'
-    : 'Yearly drink heatmap. Columns are months, rows are days.');
+  // ── Rolling 12-month window ──
+  // For current year: end at this month. For past years: end at December.
+  const endMonth = (year === currentYear) ? currentMon : 11;
 
+  // Build 12 {year, month} pairs ending at (year, endMonth)
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    let m = endMonth - i, y = year;
+    while (m < 0) { m += 12; y--; }
+    months.push({ year: y, month: m });
+  }
+
+  // ── Build grid (columns = months, rows = days 1–31) ──
+  const grid = $id('year-grid');
   const frag = document.createDocumentFragment();
 
-  if (transposed) {
-    // ── Transposed: columns = days 1–31, rows = months ──
-    // Header row: blank corner + day labels 1–31
-    frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
-    for (let day = 1; day <= 31; day++) {
-      frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
-    }
-    // Month rows — row = month index, col = day index
-    for (let m = 0; m < 12; m++) {
-      frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
-      for (let day = 1; day <= 31; day++) {
-        frag.appendChild(_ygridCell(year, m, day, today, m, day - 1));
+  // Header row: corner spacer + month labels
+  frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
+  for (const { year: my, month: mm } of months) {
+    const lbl = my !== year
+      ? `${MONTHS_ABBR[mm]}'${String(my).slice(2)}`
+      : MONTHS_ABBR[mm];
+    frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, lbl));
+  }
+
+  // Day rows 1–31
+  for (let day = 1; day <= 31; day++) {
+    frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
+    for (let col = 0; col < 12; col++) {
+      const { year: my, month: mm } = months[col];
+
+      if (day > daysInMonth(my, mm + 1)) {
+        frag.appendChild(el('div', {
+          class: 'ygrid-cell invalid', 'aria-hidden': 'true',
+          'data-row': day - 1, 'data-col': col,
+        }));
+        continue;
       }
-    }
-  } else {
-    // ── Normal: columns = months, rows = days 1–31 ──
-    // Header row: blank corner + month abbreviations
-    frag.appendChild(el('div', { class: 'ygrid-corner', 'aria-hidden': 'true' }));
-    for (let m = 0; m < 12; m++) {
-      frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
-    }
-    // Day rows 1–31 — row = day index, col = month index
-    for (let day = 1; day <= 31; day++) {
-      frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
-      for (let m = 0; m < 12; m++) {
-        frag.appendChild(_ygridCell(year, m, day, today, day - 1, m));
+
+      const dateStr = `${my}-${pad(mm + 1)}-${pad(day)}`;
+      const log     = S.map.get(dateStr);
+      const future  = dateStr > today;
+      const isToday = dateStr === today;
+      const dc      = drinkClass(log != null ? log.drinks : null);
+
+      const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
+        .filter(Boolean).join(' ');
+      const attrs = {
+        class: classes, 'data-date': dateStr,
+        'data-row': day - 1, 'data-col': col,
+      };
+      if (!future) {
+        attrs.role     = 'gridcell';
+        attrs.tabindex = '0';
+        const drinks   = log != null ? log.drinks : null;
+        const dText    = drinks == null ? 'not logged'
+          : drinks === 0 ? 'sober'
+          : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
+        attrs['aria-label'] = `${dateStr}: ${dText}`;
       }
+      frag.appendChild(el('div', attrs));
     }
   }
 
   grid.replaceChildren(frag);
+  grid.setAttribute('aria-label', 'Drink heatmap — rolling 12 months. Columns are months, rows are days.');
 
-  // Event delegation — one handler for the whole grid
+  // Event delegation
   grid.onclick = e => {
     const cell = e.target.closest('.ygrid-cell[data-date]');
     if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
@@ -528,14 +521,6 @@ function renderYearGrid() {
       openModal(cell.dataset.date);
     }
   };
-}
-
-function initYearTranspose() {
-  $id('btn-year-transpose').addEventListener('click', () => {
-    S.yearTransposed = !S.yearTransposed;
-    localStorage.setItem('yearTransposed', S.yearTransposed ? '1' : '0');
-    renderYearGrid();
-  });
 }
 
 function initYearNav() {
@@ -776,7 +761,7 @@ function renderRiver() {
 
   // ── Y axis ticks ──
   const yFrag = document.createDocumentFragment();
-  yEl.style.height = `${RIVER_MAX_H + 20}px`; // bars + month label row below
+  yEl.style.height = `${RIVER_MAX_H + 20}px`;
   const tickStep = Math.max(1, Math.ceil(scale / 4));
   for (let v = scale; v >= 0; v -= tickStep) {
     yFrag.appendChild(el('span', { class: 'river-y-tick' }, v));
@@ -806,14 +791,13 @@ function renderRiver() {
 
       if (isToday) todayIndex = dayIndex;
 
-      // Determine bar height and colour class
       let h, dc;
       if (future) {
         h = 2; dc = 'future';
       } else if (log == null) {
-        h = 2; dc = 'none';         // unlogged: thin stub, barely visible
+        h = 2; dc = 'none';
       } else if (log.drinks === 0) {
-        h = 4; dc = 'sober';        // sober: small but distinct
+        h = 4; dc = 'sober';
       } else {
         h  = Math.max(6, Math.round((log.drinks / scale) * RIVER_MAX_H));
         dc = drinkClass(log.drinks);
@@ -864,108 +848,6 @@ function renderRiver() {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   VIEW: MONTH GRID
-   Standard Mon–Sun calendar. Drink count shown in each cell.
-   ═══════════════════════════════════════════════════════════════ */
-
-function renderMonthGrid() {
-  const year  = S.yearView;
-  const month = S.monthView;   // 0-indexed
-  const today = todayStr();
-  const now   = new Date();
-
-  $id('month-label').textContent =
-    new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
-
-  // Disable "next" and show "today" based on whether we're at the current month
-  const atCurrentMonth =
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month >= now.getMonth());
-  $id('btn-month-next').disabled  = atCurrentMonth;
-  $id('btn-month-today').hidden   = atCurrentMonth;
-
-  const grid = $id('month-grid');
-
-  // Keep the 7 static header cells; clear everything else
-  const headers = Array.from(grid.querySelectorAll('.mcell-hdr'));
-  grid.replaceChildren(...headers);
-
-  // Empty offset slots (Monday = 0, …, Sunday = 6)
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
-  const frag   = document.createDocumentFragment();
-
-  for (let i = 0; i < offset; i++) {
-    frag.appendChild(el('div', { class: 'mcell empty', 'aria-hidden': 'true' }));
-  }
-
-  const total = daysInMonth(year, month + 1);
-  for (let d = 1; d <= total; d++) {
-    const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
-    const log     = S.map.get(dateStr);
-    const future  = dateStr > today;
-    const isToday = dateStr === today;
-    const dc      = drinkClass(log != null ? log.drinks : null);
-
-    const classes = ['mcell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
-      .filter(Boolean).join(' ');
-    const attrs   = { class: classes, 'data-date': dateStr };
-
-    if (!future) {
-      attrs.role     = 'gridcell';
-      attrs.tabindex = '0';
-      const dText    = log == null ? 'not logged'
-        : log.drinks === 0 ? 'sober'
-        : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
-      attrs['aria-label'] = `${dateStr}: ${dText}`;
-    }
-
-    const cell = el('div', attrs);
-    cell.appendChild(el('span', { class: 'mcell-num', 'aria-hidden': 'true' }, d));
-    frag.appendChild(cell);
-  }
-
-  grid.appendChild(frag);
-
-  // Event delegation
-  grid.onclick = e => {
-    const cell = e.target.closest('.mcell[data-date]');
-    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
-  };
-  grid.onkeydown = e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const cell = e.target.closest('.mcell[data-date]');
-    if (cell && !cell.classList.contains('future')) {
-      e.preventDefault();
-      openModal(cell.dataset.date);
-    }
-  };
-}
-
-function initMonthNav() {
-  $id('btn-month-prev').addEventListener('click', () => {
-    S.monthView--;
-    if (S.monthView < 0) { S.monthView = 11; S.yearView--; }
-    if (S.view === 'month') renderMonthGrid();
-  });
-  $id('btn-month-next').addEventListener('click', () => {
-    const now      = new Date();
-    const atLimit  =
-      S.yearView > now.getFullYear() ||
-      (S.yearView === now.getFullYear() && S.monthView >= now.getMonth());
-    if (!atLimit) {
-      S.monthView++;
-      if (S.monthView > 11) { S.monthView = 0; S.yearView++; }
-      if (S.view === 'month') renderMonthGrid();
-    }
-  });
-  $id('btn-month-today').addEventListener('click', () => {
-    const now = new Date();
-    S.yearView  = now.getFullYear();
-    S.monthView = now.getMonth();
-    renderMonthGrid();
-  });
-}
 
 /* ═══════════════════════════════════════════════════════════════
    QUICK-ADD (+1 BUTTON)
@@ -1333,8 +1215,6 @@ function init() {
   initLogout();
   initViewTabs();
   initYearNav();
-  initYearTranspose();
-  initMonthNav();
   initModal();
   initYearScrub();
   initQuickAdd();

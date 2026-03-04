@@ -121,7 +121,6 @@
       <nav class="view-nav" role="tablist" aria-label="View">
         <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Year</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="river">River</button>
-        <button class="view-tab"        role="tab" aria-selected="false" data-view="month">Month</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="journal">Journal</button>
       </nav>
 
@@ -135,7 +134,6 @@
             <span   id="year-label"         class="panel-title"></span>
             <button id="btn-year-next"      class="icon-btn" aria-label="Next year">→</button>
             <button id="btn-year-today"     class="icon-btn" hidden>today</button>
-            <button id="btn-year-transpose" class="icon-btn year-transpose-btn" aria-label="Swap month/day axes" title="Swap month/day axes">⤢</button>
           </div>
           <!-- grid is built by JS; scrollable wrapper handles mobile -->
           <div class="year-scroll-outer" id="year-scroll-outer">
@@ -162,27 +160,6 @@
               <div id="river-bars"  class="river-bars"  role="img" aria-label="Daily drink bars"></div>
               <div id="river-months" class="river-months" aria-hidden="true"></div>
             </div>
-          </div>
-        </section>
-
-        <!-- MONTH GRID -->
-        <section id="panel-month" class="view-panel" aria-label="Month calendar" hidden>
-          <div class="panel-controls">
-            <button id="btn-month-prev"  class="icon-btn" aria-label="Previous month">←</button>
-            <span   id="month-label"    class="panel-title"></span>
-            <button id="btn-month-next" class="icon-btn" aria-label="Next month">→</button>
-            <button id="btn-month-today" class="icon-btn" hidden>today</button>
-          </div>
-          <div id="month-grid" class="month-grid" role="grid" aria-label="Monthly drink calendar">
-            <!-- 7 header cells, always present -->
-            <div class="mcell-hdr" aria-hidden="true">Mon</div>
-            <div class="mcell-hdr" aria-hidden="true">Tue</div>
-            <div class="mcell-hdr" aria-hidden="true">Wed</div>
-            <div class="mcell-hdr" aria-hidden="true">Thu</div>
-            <div class="mcell-hdr" aria-hidden="true">Fri</div>
-            <div class="mcell-hdr" aria-hidden="true">Sat</div>
-            <div class="mcell-hdr" aria-hidden="true">Sun</div>
-            <!-- day cells injected by JS -->
           </div>
         </section>
 

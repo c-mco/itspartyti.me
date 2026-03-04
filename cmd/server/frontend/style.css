@@ -431,18 +431,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 .year-grid {
-  /* 1 day-label column + 12 month columns */
-  --cw:  30px;   /* cell / month-column width  */
-  --ch:  18px;   /* cell height / row height   */
-  --cg:  2px;    /* gap                        */
-  --dlw: 22px;   /* day/month label col width  */
+  --cw:  30px;   /* month-column width  */
+  --ch:  18px;   /* row height          */
+  --cg:  2px;    /* gap                 */
+  --dlw: 22px;   /* day-label col width */
 
   display: grid;
   grid-template-columns: var(--dlw) repeat(12, var(--cw));
   grid-auto-rows: var(--ch);
   gap: var(--cg);
   width: max-content;
-  margin: 0 auto; /* centre in the scroll wrapper when it fits */
+  margin: 0 auto;
   user-select: none;
 }
 
@@ -468,33 +467,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1;
 }
 
-/* Empty corner cell */
-.ygrid-corner { /* just a spacer */ }
-
-/* ── Transposed year grid: rows = months, columns = days 1–31 ── */
-.year-grid.transposed {
-  grid-template-columns: var(--dlw) repeat(31, var(--ch));
-  grid-auto-rows: var(--cw);
-}
-/* In transposed mode the day labels are column headers → centre them */
-.year-grid.transposed .ygrid-dlbl {
-  text-align: center;
-  padding-right: 0;
-}
-/* In transposed mode the month abbrs are row labels → right-align like day labels */
-.year-grid.transposed .ygrid-mhdr {
-  text-align: right;
-  padding-right: 4px;
-}
-
-/* Transpose toggle: push to the far right of the controls row */
-.year-transpose-btn {
-  margin-left: auto;
-}
-.year-transpose-btn.active {
-  color: var(--accent);
-  border-color: var(--accent);
-}
+/* Empty corner spacer */
+.ygrid-corner { /* spacer */ }
 
 /* ── Year grid cells ── */
 .ygrid-cell {
@@ -638,65 +612,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 20px;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MONTH GRID VIEW
-   ═══════════════════════════════════════════════════════════════ */
-.month-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-}
-
-.mcell-hdr {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--text-3);
-  text-align: center;
-  padding: 0.25rem 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* Day cells */
-.mcell {
-  aspect-ratio: 1;
-  background: var(--c-none);
-  border-radius: 0;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  border: 1px solid transparent;
-  transition: filter 0.08s;
-  min-height: 44px; /* touch target */
-  position: relative;
-}
-.mcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.mcell:hover:not(.future):not(.empty) { filter: brightness(1.35); }
-
-.mcell.empty  { background: transparent; cursor: default; pointer-events: none; }
-.mcell.future { opacity: 0.3; cursor: default; pointer-events: none; }
-.mcell.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
-
-/* Drink fills */
-.mcell.sober    { background: var(--c-sober);    }
-.mcell.light    { background: var(--c-light);    }
-.mcell.moderate { background: var(--c-moderate); }
-.mcell.heavy    { background: var(--c-heavy);    }
-
-.mcell-num {
-  font-size: 0.7rem;
-  color: var(--text-2);
-  line-height: 1;
-}
-
-/* Day number needs contrast against bright cell fills */
-.mcell.sober    .mcell-num { color: var(--c-sober-fg);    }
-.mcell.light    .mcell-num { color: var(--c-light-fg);    }
-.mcell.moderate .mcell-num { color: var(--c-moderate-fg); }
-.mcell.heavy    .mcell-num { color: var(--c-heavy-fg);    }
 
 /* ═══════════════════════════════════════════════════════════════
    STATS STRIP
@@ -1164,17 +1079,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .sstat-l { font-size: 0.55rem; }
 }
 
-@media (max-width: 360px) {
-  .mcell { min-height: 36px; }
-}
-
 /* ── Desktop: give the layout room to breathe ── */
 @media (min-width: 600px) {
   .view-area {
     padding: 1.75rem 2.5rem 1rem;
   }
 
-  /* Year grid: larger cells */
+  /* Year grid: larger cells on wider screens */
   .year-grid {
     --cw:  42px;
     --ch:  24px;
@@ -1182,9 +1093,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     --dlw: 26px;
   }
 
-  /* Month grid: comfortable width, centred */
-  #panel-month {
-    max-width: 520px;
+  /* Journal: comfortable reading width, centred */
+  #panel-journal {
+    max-width: 600px;
     margin-inline: auto;
   }
 }
@@ -1196,22 +1107,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     padding-inline: 3rem;
   }
 
-  /* Bigger cells — grid fills ~75% of the container at 900px */
   .year-grid {
     --cw:  60px;
     --ch:  32px;
   }
 
-  /* Month grid gets a touch more room */
-  #panel-month {
-    max-width: 580px;
+  #panel-journal {
+    max-width: 720px;
   }
 }
 
-/* ── Very wide screens: push cells larger so grid fills ~90%+ ── */
 @media (min-width: 1200px) {
   .year-grid {
     --cw:  74px;
     --ch:  40px;
   }
 }
+
