@@ -209,6 +209,32 @@ func (d *DB) DeleteLog(userID, date string) error {
 	return err
 }
 
+// IncrementDrinks atomically adds 1 to the drink count for the given date,
+// creating a log entry if none exists. Returns the new count.
+func (d *DB) IncrementDrinks(userID, date, newID string) (int, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+		INSERT INTO logs (id, user_id, date, drinks, note)
+		VALUES (?, ?, ?, 1, '')
+		ON CONFLICT(user_id, date) DO UPDATE SET drinks = drinks + 1
+	`, newID, userID, date)
+	if err != nil {
+		return 0, err
+	}
+
+	var drinks int
+	if err := tx.QueryRow(`SELECT drinks FROM logs WHERE user_id = ? AND date = ?`, userID, date).Scan(&drinks); err != nil {
+		return 0, err
+	}
+
+	return drinks, tx.Commit()
+}
+
 // Stats operations
 
 func (d *DB) GetStats(userID string) (*models.Stats, error) {

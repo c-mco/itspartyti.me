@@ -797,6 +797,95 @@ function initMonthNav() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   QUICK-ADD (+1 BUTTON)
+   Optimistic UI: the count updates instantly; the API call is
+   deferred until the 5-second undo toast expires (or is dismissed).
+   Rapid taps are coalesced — only one network request fires per batch.
+   ═══════════════════════════════════════════════════════════════ */
+
+let _qaOriginal = null; // snapshot of {drinks, note, id} before this batch
+let _qaTarget   = 0;    // optimistic target count
+let _qaTimer    = null; // setTimeout handle for the deferred commit
+
+function initQuickAdd() {
+  $id('btn-quickadd').addEventListener('click', handleQuickAdd);
+  $id('btn-quickadd-undo').addEventListener('click', undoQuickAdd);
+}
+
+function handleQuickAdd() {
+  const today    = todayStr();
+  const existing = S.map.get(today);
+
+  // Snapshot the original state on the first tap of a new batch
+  if (_qaTimer === null) {
+    _qaOriginal = existing
+      ? { drinks: existing.drinks, note: existing.note || '', id: existing.id || '' }
+      : null;
+  }
+
+  // Reset the timer on every tap (coalesce rapid taps into one deferred commit)
+  clearTimeout(_qaTimer);
+
+  _qaTarget = (S.map.get(today)?.drinks ?? 0) + 1;
+
+  // Optimistic update
+  applyLogSave({
+    id:     existing?.id || '',
+    date:   today,
+    drinks: _qaTarget,
+    note:   existing?.note || '',
+  });
+  renderCurrentView();
+
+  // Toast
+  const label = _qaTarget === 1 ? '1 drink today' : `${_qaTarget} drinks today`;
+  $id('quickadd-toast-msg').textContent = label;
+  $id('quickadd-toast').hidden = false;
+
+  _qaTimer = setTimeout(_commitQuickAdd, 5000);
+}
+
+function undoQuickAdd() {
+  clearTimeout(_qaTimer);
+  _qaTimer = null;
+
+  const today = todayStr();
+  if (_qaOriginal === null) {
+    applyLogDelete(today);
+  } else {
+    applyLogSave({ id: _qaOriginal.id, date: today, drinks: _qaOriginal.drinks, note: _qaOriginal.note });
+  }
+  _qaOriginal = null;
+
+  $id('quickadd-toast').hidden = true;
+  renderCurrentView();
+}
+
+async function _commitQuickAdd() {
+  _qaTimer = null;
+  $id('quickadd-toast').hidden = true;
+
+  const today = todayStr();
+  const note  = S.map.get(today)?.note || '';
+
+  try {
+    const saved = await api.post('/api/logs', { date: today, drinks: _qaTarget, note });
+    applyLogSave(saved);
+    renderCurrentView();
+    refreshStats();
+  } catch {
+    // Revert on failure
+    if (_qaOriginal === null) {
+      applyLogDelete(today);
+    } else {
+      applyLogSave({ id: _qaOriginal.id, date: today, drinks: _qaOriginal.drinks, note: _qaOriginal.note });
+    }
+    renderCurrentView();
+  }
+  _qaOriginal = null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    DELETE ACCOUNT
    ═══════════════════════════════════════════════════════════════ */
 
@@ -825,6 +914,7 @@ function init() {
   initMonthNav();
   initModal();
   initLoupe();
+  initQuickAdd();
   initDeleteAccount();
   checkAuth();
 }

@@ -139,6 +139,21 @@ func (h *Handler) requireAuth(r *http.Request) (*models.Session, error) {
 	return h.sessionFromRequest(r)
 }
 
+// resolveUserID resolves the authenticated user ID from the request, trying
+// auth methods in order. Currently: session cookie only.
+// Future: add a signed URL token branch here (for NFC/QR use) before the
+// final return, checking r.URL.Query().Get("token") against a verified token store.
+func (h *Handler) resolveUserID(r *http.Request) (string, error) {
+	session, err := h.sessionFromRequest(r)
+	if err != nil {
+		return "", err
+	}
+	if session != nil {
+		return session.UserID, nil
+	}
+	return "", nil
+}
+
 // --- Security headers middleware ---
 
 func (h *Handler) SecurityHeaders(next http.Handler) http.Handler {
@@ -501,6 +516,37 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "account deleted"})
+}
+
+// --- Add drink (quick +1) ---
+
+func (h *Handler) AddDrink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	userID, err := h.resolveUserID(r)
+	if err != nil || userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	today := time.Now().Format("2006-01-02")
+
+	id, err := generateID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	drinks, err := h.DB.IncrementDrinks(userID, today, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"date": today, "drinks": drinks})
 }
 
 // --- Me ---

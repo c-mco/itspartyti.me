@@ -184,7 +184,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* ═══════════════════════════════════════════════════════════════
    AUTH SCREEN
    ═══════════════════════════════════════════════════════════════ */
-#auth-screen {
+#auth-screen:not([hidden]) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -803,17 +803,83 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   QUICK-ADD BUTTON (+1)
+   ═══════════════════════════════════════════════════════════════ */
+.quickadd-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 50;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r);
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  transition: background 0.1s, transform 0.08s;
+}
+.quickadd-btn:hover  { background: var(--accent2); }
+.quickadd-btn:active { transform: scale(0.93); }
+
+/* ═══════════════════════════════════════════════════════════════
+   UNDO TOAST
+   ═══════════════════════════════════════════════════════════════ */
+.quickadd-toast:not([hidden]) {
+  position: fixed;
+  bottom: 1.5rem;
+  /* sit left of the button, flush right edge with button's left edge */
+  left: 1rem;
+  right: calc(1.5rem + 52px + 0.75rem);
+  z-index: 60;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 0.55rem 0.6rem 0.55rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.quickadd-toast-msg {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quickadd-undo-btn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--accent2);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: var(--r);
+  flex-shrink: 0;
+}
+.quickadd-undo-btn:hover { background: var(--surface2); color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════
    RESPONSIVE — mobile tweaks
    ═══════════════════════════════════════════════════════════════ */
+/* ── Small phones ── */
 @media (max-width: 400px) {
-  /* Tighter year grid cells on small phones */
   .year-grid {
     --cw:  24px;
     --ch:  16px;
     --cg:  1px;
     --dlw: 18px;
   }
-
   .sstat { min-width: 60px; padding: 0.65rem 0.35rem; }
   .sstat-n { font-size: 1.1rem; }
   .sstat-l { font-size: 0.55rem; }
@@ -821,4 +887,44 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 360px) {
   .mcell { min-height: 36px; }
+}
+
+/* ── Desktop: give the layout room to breathe ── */
+@media (min-width: 600px) {
+  .view-area {
+    padding: 1.75rem 2.5rem 1rem;
+  }
+
+  /* Year grid: larger cells so the heatmap fills the space */
+  .year-grid {
+    --cw:  38px;
+    --ch:  22px;
+    --cg:  3px;
+    --dlw: 26px;
+  }
+
+  /* Month grid: comfortable width, centred */
+  #panel-month {
+    max-width: 520px;
+    margin-inline: auto;
+  }
+}
+
+@media (min-width: 900px) {
+  .view-area {
+    max-width: 1100px;
+    margin-inline: auto;
+    padding-inline: 3rem;
+  }
+
+  /* Even larger year cells on wide screens */
+  .year-grid {
+    --cw:  48px;
+    --ch:  27px;
+  }
+
+  /* Month grid gets a touch more room */
+  #panel-month {
+    max-width: 580px;
+  }
 }

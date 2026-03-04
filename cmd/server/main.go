@@ -57,6 +57,7 @@ func main() {
 	mux.HandleFunc("/api/stats", h.Stats)
 	mux.HandleFunc("/api/me", h.Me)
 	mux.HandleFunc("/api/account", h.DeleteAccount)
+	mux.HandleFunc("/api/drinks/add", h.AddDrink)
 
 	// Frontend static files
 	sub, err := fs.Sub(frontendFS, "frontend")
