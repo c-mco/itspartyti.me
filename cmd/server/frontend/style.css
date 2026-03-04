@@ -903,7 +903,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   -webkit-mask-image: none !important;
 }
 
-/* Scrub info bubble — floats above the finger */
+/* Scrub info bubble — floats above the selected cell */
 .scrub-bubble {
   position: fixed;
   z-index: 200;
@@ -915,11 +915,34 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
   transform: translateX(-50%);
   white-space: nowrap;
 }
 .scrub-bubble[hidden] { display: none; }
+
+/* Downward arrow pointing at the selected cell */
+.scrub-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--border2);
+  border-bottom: none;
+}
+.scrub-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--surface);
+  border-bottom: none;
+  z-index: 1;
+}
 
 .scrub-bubble-date {
   font-size: 0.65rem;
@@ -931,6 +954,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--text);
 }
 
+/* Active cell ring — shown on the cell being selected during scrub */
+.ygrid-cell.scrub-active {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 1px;
+  z-index: 100 !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    QUICK-ADD BUTTON (+1)
    ═══════════════════════════════════════════════════════════════ */
@@ -939,12 +969,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   bottom: 1.5rem;
   right: 1.5rem;
   z-index: 50;
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   border-radius: var(--r);
   background: var(--accent);
   color: #fff;
-  font-size: 1rem;
+  font-size: 1.2rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   border: none;
@@ -957,6 +987,37 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .quickadd-btn:hover  { background: var(--accent2); }
 .quickadd-btn:active { transform: scale(0.93); }
+.quickadd-btn.popping {
+  animation: btn-pop 0.35s ease-out;
+}
+@keyframes btn-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.88); }
+  70%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* Rising drink bubbles — spawned by JS on each +1 tap */
+.drink-bubble {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  animation: bubble-rise var(--dur, 1s) ease-out var(--delay, 0s) forwards;
+}
+@keyframes bubble-rise {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.4);
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(var(--rise, -130px)) translateX(var(--drift, 0px)) scale(1);
+    opacity: 0;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    UNDO TOAST
@@ -966,7 +1027,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   bottom: 1.5rem;
   /* sit left of the button, flush right edge with button's left edge */
   left: 1rem;
-  right: calc(1.5rem + 52px + 0.75rem);
+  right: calc(1.5rem + 64px + 0.75rem);
   z-index: 60;
   background: var(--surface3);
   border: 1px solid var(--border2);

@@ -542,6 +542,7 @@ let _scrubStartX   = 0;
 let _scrubStartY   = 0;
 let _scrubCell     = null;   // cell currently under the finger
 let _scaledCells   = new Map(); // cell el → applied scale value
+let _scrubActiveCell = null;  // cell with scrub-active ring
 
 function initYearScrub() {
   const wrap = $id('year-scroll-outer');
@@ -671,6 +672,13 @@ function _applyMagnification(centerCell) {
   }
 
   _scaledCells = newMap;
+
+  // Ring on the active center cell
+  if (_scrubActiveCell && _scrubActiveCell !== centerCell) {
+    _scrubActiveCell.classList.remove('scrub-active');
+  }
+  centerCell.classList.add('scrub-active');
+  _scrubActiveCell = centerCell;
 }
 
 function _clearMagnification() {
@@ -679,6 +687,10 @@ function _clearMagnification() {
     cell.style.zIndex    = '';
   }
   _scaledCells.clear();
+  if (_scrubActiveCell) {
+    _scrubActiveCell.classList.remove('scrub-active');
+    _scrubActiveCell = null;
+  }
 }
 
 /** Show the scrub info bubble above the touch point. */
@@ -695,11 +707,11 @@ function _showScrubBubble(cell, x, y) {
   bubble.querySelector('.scrub-bubble-date').textContent  = dateLabel;
   bubble.querySelector('.scrub-bubble-count').textContent = drinkLabel;
 
-  // Position above the finger; clamp to viewport
+  // Position above the selected cell (which is _SCRUB_LIFT above the finger)
   const margin = 8;
   const bh     = bubble.offsetHeight || 36;
-  let   by     = y - bh - 14;
-  if (by < margin) by = y + 18; // flip below if near top
+  let   by     = y - _SCRUB_LIFT - bh - 8;
+  if (by < margin) by = margin; // clamp to top of viewport
 
   bubble.style.left = `${x}px`;
   bubble.style.top  = `${by}px`;
@@ -934,7 +946,55 @@ function initQuickAdd() {
   $id('btn-quickadd-undo').addEventListener('click', undoQuickAdd);
 }
 
+/** Spray rising bubbles from the +1 button — called on each tap. */
+function spawnBubbles() {
+  const btn  = $id('btn-quickadd');
+  const rect = btn.getBoundingClientRect();
+  const cx   = rect.left + rect.width  / 2;
+  const cy   = rect.top  + rect.height / 2;
+
+  // Colours: mostly white/pearl, some golden/amber for the beer vibe
+  const colours = [
+    'rgba(255,255,255,0.75)',
+    'rgba(255,255,255,0.55)',
+    'rgba(255,220,100,0.65)',
+    'rgba(255,200,60,0.50)',
+    'rgba(255,255,255,0.85)',
+  ];
+
+  const count = 10 + Math.floor(Math.random() * 6); // 10–15 per tap
+  for (let i = 0; i < count; i++) {
+    const b     = document.createElement('div');
+    b.className = 'drink-bubble';
+    const size  = 4 + Math.random() * 9;           // 4–13 px
+    const startX = cx + (Math.random() - 0.5) * rect.width * 0.7;
+    const drift  = (Math.random() - 0.5) * 70;     // ±35 px horizontal
+    const rise   = 90 + Math.random() * 80;        // 90–170 px up
+    const dur    = (0.7 + Math.random() * 0.8).toFixed(2);
+    const delay  = (Math.random() * 0.25).toFixed(2);
+    const colour = colours[Math.floor(Math.random() * colours.length)];
+
+    b.style.cssText = `
+      left: ${startX}px; top: ${cy}px;
+      width: ${size}px; height: ${size}px;
+      background: ${colour};
+      border: 1px solid rgba(255,255,255,0.3);
+      --rise: -${rise}px; --drift: ${drift}px;
+      --dur: ${dur}s; --delay: ${delay}s;
+    `;
+    document.body.appendChild(b);
+    b.addEventListener('animationend', () => b.remove(), { once: true });
+  }
+
+  // Pop animation on the button
+  btn.classList.remove('popping');
+  void btn.offsetWidth; // reflow to restart
+  btn.classList.add('popping');
+  btn.addEventListener('animationend', () => btn.classList.remove('popping'), { once: true });
+}
+
 function handleQuickAdd() {
+  spawnBubbles();
   const today    = todayStr();
   const existing = S.map.get(today);
 
