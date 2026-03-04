@@ -87,6 +87,7 @@
         <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Year</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="river">River</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="month">Month</button>
+        <button class="view-tab"        role="tab" aria-selected="false" data-view="journal">Journal</button>
       </nav>
 
       <!-- ─── VIEW PANELS ─────────────────────────────── -->
@@ -148,6 +149,13 @@
           </div>
         </section>
 
+        <!-- JOURNAL / DIARY -->
+        <section id="panel-journal" class="view-panel" aria-label="Journal" hidden>
+          <div id="journal-list" class="journal-list">
+            <!-- entries injected by JS -->
+          </div>
+        </section>
+
         <!-- ─── STATS STRIP ──────────────────────────────── -->
         <div class="stats-strip" aria-label="Statistics">
           <div class="sstat">
@@ -168,11 +176,11 @@
           </div>
           <div class="sstat">
             <span class="sstat-n" id="st-avg">—</span>
-            <span class="sstat-l">avg / drinking day</span>
+            <span class="sstat-l">avg per session</span>
           </div>
           <div class="sstat">
             <span class="sstat-n" id="st-sober">—</span>
-            <span class="sstat-l">sober days</span>
+            <span class="sstat-l">dry days</span>
           </div>
         </div>
 
@@ -207,7 +215,7 @@
       <div class="modal-top">
         <div>
           <p id="modal-date" class="modal-date-str"></p>
-          <h2 id="modal-heading" class="modal-heading">Log drinks</h2>
+          <h2 id="modal-heading" class="modal-heading">how was it?</h2>
         </div>
         <button id="btn-modal-close" class="icon-btn" aria-label="Close modal">✕</button>
       </div>
@@ -223,8 +231,8 @@
         <label for="input-note">note
           <span class="hint">optional · max 500 chars</span>
         </label>
-        <textarea id="input-note" rows="2" maxlength="500"
-                  placeholder="what were you drinking?"></textarea>
+        <textarea id="input-note" rows="3" maxlength="500"
+                  placeholder="what happened? how do you feel about it?"></textarea>
       </div>
 
       <div id="modal-err" class="form-err" role="alert" aria-live="polite"></div>

@@ -22,35 +22,35 @@
   --border2:  #35353c;
 
   /* Text */
-  --text:    #e2e2ea;
-  --text-2:  #8a8a9a;
-  --text-3:  #484855;
-
-  /* Accent — used for today ring, active tabs, focus */
-  --accent:  #6e64e8;
-  --accent2: #7d74ef;
+  --text:    #e8e8f0;
+  --text-2:  #9090a8;
+  --text-3:  #5a5a72;  /* slightly more visible for grid labels */
 
   /* Danger */
   --danger:       #b03030;
   --danger-hover: #c43535;
 
-  /* ── Drink-level colours — a warm amber→sienna→burgundy ramp ── */
-  /* "none" = not logged: subtle, barely above background           */
-  /* "sober" = 0 drinks: earthy forest green, positive but quiet   */
-  /* "light" = 1–2: warm amber honey                               */
-  /* "moderate" = 3–4: terracotta/sienna                           */
-  /* "heavy" = 5+: deep burgundy/wine                              */
-  --c-none:     #222226;
-  --c-sober:    #1e5438;
-  --c-light:    #7e5a18;
-  --c-moderate: #7a3218;
-  --c-heavy:    #5e1a28;
+  /* Accent — vivid violet */
+  --accent:  #8b5cf6;
+  --accent2: #a78bfa;
 
-  /* Brighter versions for foreground text on those backgrounds */
+  /* ── Drink-level colours ── */
+  /* "none" = not logged: visible dark cell so the grid reads clearly */
+  /* "sober" = 0 drinks: rich emerald — a win worth celebrating       */
+  /* "light" = 1–2: warm amber                                        */
+  /* "moderate" = 3–4: deep orange                                    */
+  /* "heavy" = 5+: deep crimson                                       */
+  --c-none:     #1f1f2c;
+  --c-sober:    #14532d;
+  --c-light:    #92400e;
+  --c-moderate: #7c2d12;
+  --c-heavy:    #881337;
+
+  /* Foreground accents — bright, used in legend + bubble borders */
   --c-sober-fg:    #4ade80;
-  --c-light-fg:    #f0b840;
-  --c-moderate-fg: #f08040;
-  --c-heavy-fg:    #f06080;
+  --c-light-fg:    #fbbf24;
+  --c-moderate-fg: #f97316;
+  --c-heavy-fg:    #f43f5e;
 
   /* Sharp corners */
   --r: 2px;
@@ -360,6 +360,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .year-scroll-outer {
   overflow-x: auto;
   overflow-y: visible;
+  display: flex; /* enables margin: auto centering on child grid */
   -webkit-overflow-scrolling: touch;
   /* Fade out horizontal edges on overflow */
   mask-image: linear-gradient(to right, transparent 0, black 4px, black calc(100% - 4px), transparent 100%);
@@ -367,35 +368,36 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .year-grid {
   /* 1 day-label column + 12 month columns */
-  /* Cells use custom props so mobile can shrink them */
-  --cw:  30px;   /* cell width  */
-  --ch:  18px;   /* cell height */
-  --cg:  2px;    /* gap         */
-  --dlw: 22px;   /* day-label width */
+  --cw:  30px;   /* cell / month-column width  */
+  --ch:  18px;   /* cell height / row height   */
+  --cg:  2px;    /* gap                        */
+  --dlw: 22px;   /* day/month label col width  */
 
   display: grid;
   grid-template-columns: var(--dlw) repeat(12, var(--cw));
   grid-auto-rows: var(--ch);
   gap: var(--cg);
-  width: max-content; /* allow horizontal scroll */
+  width: max-content;
+  margin: 0 auto; /* centre in the scroll wrapper when it fits */
   user-select: none;
 }
 
 /* Month header cells */
 .ygrid-mhdr {
   font-size: 0.65rem;
-  font-weight: 600;
-  color: var(--text-3);
+  font-weight: 700;
+  color: var(--text-2);
   text-transform: uppercase;
   text-align: center;
   align-self: center;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 /* Day-number label column */
 .ygrid-dlbl {
   font-size: 0.6rem;
-  color: var(--text-3);
+  font-weight: 500;
+  color: var(--text-2);
   text-align: right;
   align-self: center;
   padding-right: 3px;
@@ -421,9 +423,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   padding-right: 4px;
 }
 
-/* Active state for transpose toggle button */
+/* Transpose toggle: push to the far right of the controls row */
+.year-transpose-btn {
+  margin-left: auto;
+}
 .year-transpose-btn.active {
   color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ── Year grid cells ── */
@@ -442,8 +448,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ygrid-cell.invalid { background: transparent; cursor: default; pointer-events: none; }
 .ygrid-cell.future  { opacity: 0.25; cursor: default; pointer-events: none; }
 
-/* today ring */
-.ygrid-cell.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
+/* today ring — 2px for visibility */
+.ygrid-cell.is-today { box-shadow: inset 0 0 0 2px var(--accent); }
 
 /* Drink-level fills */
 .ygrid-cell.sober    { background: var(--c-sober);    }
@@ -672,6 +678,76 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   JOURNAL / DIARY VIEW
+   ═══════════════════════════════════════════════════════════════ */
+.journal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-bottom: 2rem;
+}
+
+.journal-empty {
+  text-align: center;
+  color: var(--text-3);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  padding: 3rem 1rem;
+}
+
+.journal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1rem 1.1rem;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  border-left: 4px solid var(--border2);
+}
+.journal-card:hover { background: var(--surface2); }
+.journal-card:active { background: var(--surface2); }
+.journal-card.light    { border-left-color: var(--c-light-fg); }
+.journal-card.moderate { border-left-color: var(--c-moderate-fg); }
+.journal-card.heavy    { border-left-color: var(--c-heavy-fg); }
+.journal-card.sober    { border-left-color: #4ade80; }
+
+.journal-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.journal-date {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+}
+
+.journal-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15em 0.55em;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-3);
+}
+.journal-badge.light    { background: var(--c-light);    color: var(--c-light-fg); }
+.journal-badge.moderate { background: var(--c-moderate); color: var(--c-moderate-fg); }
+.journal-badge.heavy    { background: var(--c-heavy);    color: var(--c-heavy-fg); }
+.journal-badge.sober    { background: #14532d;           color: #4ade80; }
+
+.journal-note {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -932,8 +1008,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* ── Small phones ── */
 @media (max-width: 400px) {
   .year-grid {
-    --cw:  24px;
-    --ch:  16px;
+    --cw:  22px;
+    --ch:  15px;
     --cg:  1px;
     --dlw: 18px;
   }
@@ -952,10 +1028,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     padding: 1.75rem 2.5rem 1rem;
   }
 
-  /* Year grid: larger cells so the heatmap fills the space */
+  /* Year grid: larger cells */
   .year-grid {
-    --cw:  38px;
-    --ch:  22px;
+    --cw:  42px;
+    --ch:  24px;
     --cg:  3px;
     --dlw: 26px;
   }
@@ -974,14 +1050,22 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     padding-inline: 3rem;
   }
 
-  /* Even larger year cells on wide screens */
+  /* Bigger cells — grid fills ~75% of the container at 900px */
   .year-grid {
-    --cw:  48px;
-    --ch:  27px;
+    --cw:  60px;
+    --ch:  32px;
   }
 
   /* Month grid gets a touch more room */
   #panel-month {
     max-width: 580px;
+  }
+}
+
+/* ── Very wide screens: push cells larger so grid fills ~90%+ ── */
+@media (min-width: 1200px) {
+  .year-grid {
+    --cw:  74px;
+    --ch:  40px;
   }
 }

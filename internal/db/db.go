@@ -324,26 +324,32 @@ func (d *DB) GetStats(userID string) (*models.Stats, error) {
 
 func calculateStreaks(records []dayRecord, today string) (current, longest int) {
 	// records sorted DESC by date
+	if len(records) == 0 {
+		return 0, 0
+	}
+
 	// Build a map for O(1) lookup
 	drinkMap := make(map[string]int)
 	for _, r := range records {
 		drinkMap[r.date] = r.drinks
 	}
 
-	// Current sober streak: walk backwards from today
+	// Earliest logged date — don't count beyond it
+	earliestDate := records[len(records)-1].date
+
+	// Current sober streak: walk backwards from today.
+	// Unlogged days are treated as sober (0 drinks) — the user shouldn't have
+	// to log a zero to keep their streak alive. We stop only when we hit a
+	// drinking day or go before the earliest log.
 	current = 0
 	d := parseDate(today)
 	for {
 		dateStr := d.Format("2006-01-02")
-		drinks, exists := drinkMap[dateStr]
-		if !exists || drinks == 0 {
-			if exists || d.After(parseDate(today)) {
-				// Only count logged days or today
-			}
-			// If not logged, we treat it as unknown — stop streak
-			if !exists {
-				break
-			}
+		if dateStr < earliestDate {
+			break
+		}
+		drinks := drinkMap[dateStr] // 0 if unlogged (map zero value)
+		if drinks == 0 {
 			current++
 			d = d.AddDate(0, 0, -1)
 		} else {

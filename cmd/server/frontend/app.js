@@ -380,7 +380,7 @@ function switchView(name) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-  ['year', 'river', 'month'].forEach(v => {
+  ['year', 'river', 'month', 'journal'].forEach(v => {
     $id(`panel-${v}`).hidden = v !== name;
   });
   renderCurrentView();
@@ -388,9 +388,10 @@ function switchView(name) {
 
 function renderCurrentView() {
   switch (S.view) {
-    case 'year':  renderYearGrid();  break;
-    case 'river': renderRiver();     break;
-    case 'month': renderMonthGrid(); break;
+    case 'year':    renderYearGrid();  break;
+    case 'river':   renderRiver();     break;
+    case 'month':   renderMonthGrid(); break;
+    case 'journal': renderJournal();   break;
   }
 }
 
@@ -1002,6 +1003,52 @@ async function _commitQuickAdd() {
     renderCurrentView();
   }
   _qaOriginal = null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW: JOURNAL / DIARY
+   All logged days that have a note, newest first.
+   ═══════════════════════════════════════════════════════════════ */
+
+function renderJournal() {
+  const list = $id('journal-list');
+
+  // Filter to entries with non-empty notes, sorted newest first
+  const entries = S.logs
+    .filter(l => l.note && l.note.trim())
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  if (entries.length === 0) {
+    list.innerHTML =
+      '<p class="journal-empty">No diary entries yet.<br>Tap any day to log a note — it\'ll show up here.</p>';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const log of entries) {
+    const card = el('div', { class: `journal-card ${drinkClass(log.drinks)}`, 'data-date': log.date });
+
+    const d = parseDate(log.date);
+    const dateLabel = d.toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    });
+    const drinkLabel = log.drinks === 0 ? 'dry'
+      : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
+
+    const meta = el('div', { class: 'journal-meta' });
+    meta.appendChild(el('span', { class: 'journal-date' }, dateLabel));
+    meta.appendChild(el('span', { class: `journal-badge ${drinkClass(log.drinks)}` }, drinkLabel));
+    card.appendChild(meta);
+
+    const noteEl = el('p', { class: 'journal-note' });
+    noteEl.textContent = log.note; // safe: textContent, not innerHTML
+    card.appendChild(noteEl);
+
+    card.addEventListener('click', () => openModal(log.date));
+    frag.appendChild(card);
+  }
+
+  list.replaceChildren(frag);
 }
 
 /* ═══════════════════════════════════════════════════════════════
