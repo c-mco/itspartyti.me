@@ -534,6 +534,8 @@ function initYearNav() {
    - Hold, tap, or non-horizontal drag: selection mode → preventDefault
    ─────────────────────────────────────────────────────────────── */
 
+const _SCRUB_LIFT = 72; // px: offset hit-test above finger so magnified area is visible
+
 let _scrubActive   = false;  // currently in selection mode
 let _scrollGesture = false;  // committed to letting browser handle scroll
 let _scrubStartX   = 0;
@@ -577,7 +579,7 @@ function _scrubTouchMove(e) {
     e.preventDefault(); // stop page + container scroll
     $id('year-scroll-outer').classList.add('scrubbing');
 
-    const cell = _scrubCellAt(t.clientX, t.clientY);
+    const cell = _scrubCellAt(t.clientX, t.clientY - _SCRUB_LIFT);
     if (cell !== _scrubCell) {
       _scrubCell = cell;
       if (cell) {
@@ -601,9 +603,9 @@ function _scrubTouchEnd(e) {
     _hideScrubBubble();
     $id('year-scroll-outer').classList.remove('scrubbing');
 
-    // Open the modal for whatever cell the finger lifted on
+    // Open the modal for whatever cell the finger lifted on (same offset as move)
     const t    = e.changedTouches[0];
-    const cell = _scrubCellAt(t.clientX, t.clientY) || _scrubCell;
+    const cell = _scrubCellAt(t.clientX, t.clientY - _SCRUB_LIFT) || _scrubCell;
     if (cell && !cell.classList.contains('future') && !cell.classList.contains('invalid')) {
       openModal(cell.dataset.date);
     }
