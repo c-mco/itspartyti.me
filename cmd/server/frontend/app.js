@@ -407,10 +407,14 @@ function initViewTabs() {
    Mobile: loupe magnifier follows the finger (see below).
    ═══════════════════════════════════════════════════════════════ */
 
-/** Build a single year-grid cell for (month m+1, day). Returns a div element. */
-function _ygridCell(year, m, day, today) {
+/**
+ * Build a single year-grid cell for (month m+1, day).
+ * row/col are the logical grid coordinates used for magnification distance math.
+ */
+function _ygridCell(year, m, day, today, row, col) {
   if (day > daysInMonth(year, m + 1)) {
-    return el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true' });
+    return el('div', { class: 'ygrid-cell invalid', 'aria-hidden': 'true',
+                       'data-row': row, 'data-col': col });
   }
   const dateStr = `${year}-${pad(m + 1)}-${pad(day)}`;
   const log     = S.map.get(dateStr);
@@ -420,7 +424,7 @@ function _ygridCell(year, m, day, today) {
 
   const classes = ['ygrid-cell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
     .filter(Boolean).join(' ');
-  const attrs = { class: classes, 'data-date': dateStr };
+  const attrs = { class: classes, 'data-date': dateStr, 'data-row': row, 'data-col': col };
   if (!future) {
     attrs.role     = 'gridcell';
     attrs.tabindex = '0';
@@ -457,11 +461,11 @@ function renderYearGrid() {
     for (let day = 1; day <= 31; day++) {
       frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
     }
-    // Month rows
+    // Month rows — row = month index, col = day index
     for (let m = 0; m < 12; m++) {
       frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
       for (let day = 1; day <= 31; day++) {
-        frag.appendChild(_ygridCell(year, m, day, today));
+        frag.appendChild(_ygridCell(year, m, day, today, m, day - 1));
       }
     }
   } else {
@@ -471,11 +475,11 @@ function renderYearGrid() {
     for (let m = 0; m < 12; m++) {
       frag.appendChild(el('div', { class: 'ygrid-mhdr', 'aria-hidden': 'true' }, MONTHS_ABBR[m]));
     }
-    // Day rows 1–31
+    // Day rows 1–31 — row = day index, col = month index
     for (let day = 1; day <= 31; day++) {
       frag.appendChild(el('div', { class: 'ygrid-dlbl', 'aria-hidden': 'true' }, day));
       for (let m = 0; m < 12; m++) {
-        frag.appendChild(_ygridCell(year, m, day, today));
+        frag.appendChild(_ygridCell(year, m, day, today, day - 1, m));
       }
     }
   }
@@ -518,105 +522,189 @@ function initYearNav() {
   });
 }
 
-/* ─── Loupe: mobile magnifier ─────────────────────────────────
-   When the user holds or drags a finger across the year grid, a
-   floating card appears above their finger showing the date and
-   drink count — so the thumb doesn't obscure the cell.
-   A minimal-movement touch (< 8px) is treated as a tap → opens modal.
+/* ─── Scrub: dock-magnification touch interaction for year grid ──
+   Touch and hold/drag across the year grid to scrub through cells.
+   Nearby cells scale up (dock magnification). A small bubble above
+   the finger shows the date and drink count. Lifting the finger
+   on a cell opens the log modal.
+
+   Gesture disambiguation:
+   - Horizontal swipe (dx > dy * 1.8): treated as scroll → not intercepted
+   - Hold, tap, or non-horizontal drag: selection mode → preventDefault
    ─────────────────────────────────────────────────────────────── */
 
-let _lTouching = false;
-let _lTimer    = null;
-let _lStartX   = 0;
-let _lStartY   = 0;
-let _lMoved    = false;
+let _scrubActive   = false;  // currently in selection mode
+let _scrollGesture = false;  // committed to letting browser handle scroll
+let _scrubStartX   = 0;
+let _scrubStartY   = 0;
+let _scrubCell     = null;   // cell currently under the finger
+let _scaledCells   = new Map(); // cell el → applied scale value
 
-function initLoupe() {
-  // Attach to the static scroll wrapper, not the rebuilt grid
+function initYearScrub() {
   const wrap = $id('year-scroll-outer');
-  wrap.addEventListener('touchstart',  _lTouchStart, { passive: true });
-  wrap.addEventListener('touchmove',   _lTouchMove,  { passive: true });
-  wrap.addEventListener('touchend',    _lTouchEnd);
-  wrap.addEventListener('touchcancel', _lTouchEnd);
+  // Non-passive so we can call preventDefault when in scrub mode
+  wrap.addEventListener('touchstart',  _scrubTouchStart,  { passive: false });
+  wrap.addEventListener('touchmove',   _scrubTouchMove,   { passive: false });
+  wrap.addEventListener('touchend',    _scrubTouchEnd,    { passive: false });
+  wrap.addEventListener('touchcancel', _scrubTouchCancel, { passive: false });
 }
 
-function _lTouchStart(e) {
-  const t   = e.touches[0];
-  _lTouching = true;
-  _lStartX   = t.clientX;
-  _lStartY   = t.clientY;
-  _lMoved    = false;
-  clearTimeout(_lTimer);
-  // Small delay so fast taps don't flash the loupe
-  _lTimer = setTimeout(() => {
-    if (_lTouching) _loupeShow(t.clientX, t.clientY);
-  }, 80);
+function _scrubTouchStart(e) {
+  const t      = e.touches[0];
+  _scrubActive   = false;
+  _scrollGesture = false;
+  _scrubStartX   = t.clientX;
+  _scrubStartY   = t.clientY;
+  _scrubCell     = null;
 }
 
-function _lTouchMove(e) {
+function _scrubTouchMove(e) {
   const t  = e.touches[0];
-  if (Math.abs(t.clientX - _lStartX) > 8 || Math.abs(t.clientY - _lStartY) > 8) {
-    _lMoved = true;
+  const dx = Math.abs(t.clientX - _scrubStartX);
+  const dy = Math.abs(t.clientY - _scrubStartY);
+
+  // Commit to a gesture type once the finger has moved enough
+  if (!_scrubActive && !_scrollGesture && dx + dy > 8) {
+    if (dx > dy * 1.8) {
+      _scrollGesture = true; // horizontal pan → let browser scroll
+    } else {
+      _scrubActive = true;   // tap/hold/drag → selection mode
+    }
   }
-  if (_lTouching) _loupeShow(t.clientX, t.clientY);
+
+  if (_scrubActive) {
+    e.preventDefault(); // stop page + container scroll
+    $id('year-scroll-outer').classList.add('scrubbing');
+
+    const cell = _scrubCellAt(t.clientX, t.clientY);
+    if (cell !== _scrubCell) {
+      _scrubCell = cell;
+      if (cell) {
+        _applyMagnification(cell);
+        _showScrubBubble(cell, t.clientX, t.clientY);
+      } else {
+        _clearMagnification();
+        _hideScrubBubble();
+      }
+    } else if (cell) {
+      // Update bubble position as finger moves
+      _showScrubBubble(cell, t.clientX, t.clientY);
+    }
+  }
 }
 
-function _lTouchEnd(e) {
-  clearTimeout(_lTimer);
-  _lTouching = false;
-  _loupeHide();
-  // Tap = finger barely moved → open the modal
-  if (!_lMoved) {
+function _scrubTouchEnd(e) {
+  if (_scrubActive) {
+    e.preventDefault(); // prevent synthesised click so modal doesn't open twice
+    _clearMagnification();
+    _hideScrubBubble();
+    $id('year-scroll-outer').classList.remove('scrubbing');
+
+    // Open the modal for whatever cell the finger lifted on
     const t    = e.changedTouches[0];
-    const cell = document.elementFromPoint(t.clientX, t.clientY)
-                          ?.closest('.ygrid-cell[data-date]');
-    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
+    const cell = _scrubCellAt(t.clientX, t.clientY) || _scrubCell;
+    if (cell && !cell.classList.contains('future') && !cell.classList.contains('invalid')) {
+      openModal(cell.dataset.date);
+    }
   }
+  _scrubActive   = false;
+  _scrollGesture = false;
+  _scrubCell     = null;
 }
 
-function _loupeShow(x, y) {
-  const target = document.elementFromPoint(x, y);
-  const cell   = target?.closest('.ygrid-cell[data-date]');
-  if (!cell) { _loupeHide(); return; }
+function _scrubTouchCancel() {
+  _clearMagnification();
+  _hideScrubBubble();
+  $id('year-scroll-outer').classList.remove('scrubbing');
+  _scrubActive   = false;
+  _scrollGesture = false;
+  _scrubCell     = null;
+}
 
+/** Find the grid cell at viewport coords (x, y) using data-row/col lookup. */
+function _scrubCellAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el?.closest('.ygrid-cell[data-date]') ?? null;
+}
+
+/**
+ * Apply dock-style magnification centred on `centerCell`.
+ * Uses data-row / data-col attributes for distance math — no layout reads.
+ * Max scale: 2.2× at centre, tapering to 1× at radius 3.5 cells.
+ */
+function _applyMagnification(centerCell) {
+  const cr = +centerCell.dataset.row;
+  const cc = +centerCell.dataset.col;
+  const RADIUS    = 3.5;
+  const MAX_SCALE = 2.2;
+
+  const newMap = new Map();
+
+  // Collect all data cells from the rendered grid
+  const cells = $id('year-grid').querySelectorAll('.ygrid-cell');
+
+  // Phase 1: compute scales (reads only — no DOM writes yet)
+  for (const cell of cells) {
+    const dr   = +cell.dataset.row - cr;
+    const dc   = +cell.dataset.col - cc;
+    const dist = Math.sqrt(dr * dr + dc * dc);
+    if (dist < RADIUS) {
+      const t     = Math.pow(1 - dist / RADIUS, 1.6); // falloff curve
+      const scale = 1 + (MAX_SCALE - 1) * t;
+      newMap.set(cell, scale);
+    }
+  }
+
+  // Phase 2: apply (writes — no reads)
+  for (const [cell] of _scaledCells) {
+    if (!newMap.has(cell)) {
+      cell.style.transform = '';
+      cell.style.zIndex    = '';
+    }
+  }
+  for (const [cell, scale] of newMap) {
+    cell.style.transform = `scale(${scale.toFixed(3)})`;
+    cell.style.zIndex    = String(Math.round(scale * 10));
+  }
+
+  _scaledCells = newMap;
+}
+
+function _clearMagnification() {
+  for (const [cell] of _scaledCells) {
+    cell.style.transform = '';
+    cell.style.zIndex    = '';
+  }
+  _scaledCells.clear();
+}
+
+/** Show the scrub info bubble above the touch point. */
+function _showScrubBubble(cell, x, y) {
   const dateStr    = cell.dataset.date;
   const log        = S.map.get(dateStr);
   const d          = parseDate(dateStr);
-  const dc         = drinkClass(log != null ? log.drinks : null);
-
-  const dateLabel  = d.toLocaleDateString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric',
-  });
-  const drinkLabel = log == null   ? 'not logged'
-    : log.drinks === 0             ? 'sober'
+  const dateLabel  = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const drinkLabel = log == null  ? '—'
+    : log.drinks === 0            ? 'sober'
     : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
-  const noteHtml   = log?.note
-    ? `<span class="loupe-note">${esc(log.note.slice(0, 60))}</span>`
-    : '';
 
-  const loupe = $id('loupe');
-  loupe.className = `loupe ${dc}`;
-  loupe.innerHTML = `
-    <span class="loupe-date">${esc(dateLabel)}</span>
-    <span class="loupe-count">${esc(drinkLabel)}</span>
-    ${noteHtml}
-  `;
+  const bubble = $id('scrub-bubble');
+  bubble.querySelector('.scrub-bubble-date').textContent  = dateLabel;
+  bubble.querySelector('.scrub-bubble-count').textContent = drinkLabel;
 
-  // Clamp position so the loupe stays within the viewport
-  const W = 160, margin = 12;
-  let lx = x - W / 2;
-  let ly = y - 85;
-  lx = Math.max(margin, Math.min(window.innerWidth - W - margin, lx));
-  if (ly < margin) ly = y + 32; // flip below if near the top edge
+  // Position above the finger; clamp to viewport
+  const margin = 8;
+  const bh     = bubble.offsetHeight || 36;
+  let   by     = y - bh - 14;
+  if (by < margin) by = y + 18; // flip below if near top
 
-  loupe.style.left  = `${lx}px`;
-  loupe.style.top   = `${ly}px`;
-  loupe.style.width = `${W}px`;
-  loupe.hidden = false;
+  bubble.style.left = `${x}px`;
+  bubble.style.top  = `${by}px`;
+  bubble.hidden     = false;
 }
 
-function _loupeHide() {
-  $id('loupe').hidden = true;
+function _hideScrubBubble() {
+  $id('scrub-bubble').hidden = true;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -945,7 +1033,7 @@ function init() {
   initYearTranspose();
   initMonthNav();
   initModal();
-  initLoupe();
+  initYearScrub();
   initQuickAdd();
   initDeleteAccount();
   checkAuth();

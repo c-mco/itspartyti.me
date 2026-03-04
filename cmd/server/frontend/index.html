@@ -148,44 +148,44 @@
           </div>
         </section>
 
+        <!-- ─── STATS STRIP ──────────────────────────────── -->
+        <div class="stats-strip" aria-label="Statistics">
+          <div class="sstat">
+            <span class="sstat-n" id="st-week">—</span>
+            <span class="sstat-l">this week</span>
+          </div>
+          <div class="sstat">
+            <span class="sstat-n" id="st-month">—</span>
+            <span class="sstat-l">this month</span>
+          </div>
+          <div class="sstat">
+            <span class="sstat-n" id="st-all">—</span>
+            <span class="sstat-l">all time</span>
+          </div>
+          <div class="sstat">
+            <span class="sstat-n" id="st-streak">—</span>
+            <span class="sstat-l">streak · best <span id="st-best">—</span></span>
+          </div>
+          <div class="sstat">
+            <span class="sstat-n" id="st-avg">—</span>
+            <span class="sstat-l">avg / drinking day</span>
+          </div>
+          <div class="sstat">
+            <span class="sstat-n" id="st-sober">—</span>
+            <span class="sstat-l">sober days</span>
+          </div>
+        </div>
+
+        <!-- ─── ACCOUNT ──────────────────────────────────── -->
+        <details class="account-det">
+          <summary class="account-summary">account</summary>
+          <div class="account-body">
+            <p>Permanently delete your account and all logs. Cannot be undone.</p>
+            <button id="btn-delete-account" class="btn-danger">delete account</button>
+          </div>
+        </details>
+
       </main>
-
-      <!-- ─── STATS STRIP ──────────────────────────────── -->
-      <div class="stats-strip" aria-label="Statistics">
-        <div class="sstat">
-          <span class="sstat-n" id="st-week">—</span>
-          <span class="sstat-l">this week</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-month">—</span>
-          <span class="sstat-l">this month</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-all">—</span>
-          <span class="sstat-l">all time</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-streak">—</span>
-          <span class="sstat-l">streak · best <span id="st-best">—</span></span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-avg">—</span>
-          <span class="sstat-l">avg / drinking day</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-sober">—</span>
-          <span class="sstat-l">sober days</span>
-        </div>
-      </div>
-
-      <!-- ─── ACCOUNT ──────────────────────────────────── -->
-      <details class="account-det">
-        <summary class="account-summary">account</summary>
-        <div class="account-body">
-          <p>Permanently delete your account and all logs. Cannot be undone.</p>
-          <button id="btn-delete-account" class="btn-danger">delete account</button>
-        </div>
-      </details>
 
       <!-- ─── QUICK-ADD ──────────────────────────────────────── -->
       <button id="btn-quickadd" class="quickadd-btn" type="button" aria-label="Add one drink">+1</button>
@@ -239,8 +239,11 @@
     </div>
   </div>
 
-  <!-- Mobile loupe for year grid -->
-  <div id="loupe" class="loupe" hidden aria-hidden="true"></div>
+  <!-- Scrub bubble: shows date/drink info while finger scrubs the year grid -->
+  <div id="scrub-bubble" class="scrub-bubble" hidden aria-hidden="true">
+    <span class="scrub-bubble-date"></span>
+    <span class="scrub-bubble-count"></span>
+  </div>
 
   <script src="/app.js"></script>
 </body>
