@@ -72,7 +72,8 @@ func main() {
 	mux.HandleFunc("/api/logs/", h.DeleteLog)
 	mux.HandleFunc("/api/stats", h.Stats)
 	mux.HandleFunc("/api/me", h.Me)
-	mux.HandleFunc("/api/account", h.DeleteAccount)
+	mux.HandleFunc("/api/account/password", h.ChangePassword)
+	mux.HandleFunc("/api/account", h.Account)
 	mux.HandleFunc("/api/drinks/add", h.AddDrink)
 
 	// Frontend static files

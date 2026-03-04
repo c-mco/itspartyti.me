@@ -296,24 +296,69 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .header-account-btn:hover { color: var(--text-2); border-color: var(--border); }
 
-/* Account dropdown panel */
-.account-panel {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 40;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-top: none;
-  padding: 1rem 1.25rem;
-  min-width: 240px;
+/* ═══════════════════════════════════════════════════════════════
+   ACCOUNT SCREEN (full-screen overlay)
+   ═══════════════════════════════════════════════════════════════ */
+.account-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+.account-screen[hidden] { display: none; }
+
+.account-screen-hdr {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.account-screen-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.account-screen-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.account-section {
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.account-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.account-danger-zone { margin-top: auto; }
+
+.account-danger-desc {
   font-size: 0.82rem;
   color: var(--text-2);
+  line-height: 1.5;
 }
-.account-panel[hidden] { display: none; }
 
 /* ═══════════════════════════════════════════════════════════════
    VIEW NAVIGATION TABS
@@ -819,35 +864,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   50%       { opacity: 0.6; }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ACCOUNT (legacy — kept for safety, now unused)
-   ═══════════════════════════════════════════════════════════════ */
-.account-det {
-  border-top: 1px solid var(--border);
-  margin-bottom: 4rem;
-}
-
-.account-summary {
-  padding: 0.85rem 1rem;
-  font-size: 0.8rem;
-  color: var(--text-3);
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  letter-spacing: 0.04em;
-}
-.account-summary::-webkit-details-marker { display: none; }
-.account-summary::after { content: ' ›'; }
-.account-det[open] .account-summary::after { content: ' ‹'; }
-
-.account-body {
-  padding: 0 1rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  font-size: 0.82rem;
-  color: var(--text-2);
-}
 
 /* ═══════════════════════════════════════════════════════════════
    LOG MODAL

@@ -4,7 +4,8 @@ import "time"
 
 type User struct {
 	ID           string    `json:"id"`
-	Username     string    `json:"username"`
+	Email        string    `json:"email"`        // stored in 'username' column for backward compat
+	DisplayName  string    `json:"display_name"` // stored in 'display_name' column
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -26,14 +27,14 @@ type Session struct {
 }
 
 type Stats struct {
-	TotalThisWeek    int     `json:"total_this_week"`
-	TotalThisMonth   int     `json:"total_this_month"`
-	TotalAllTime     int     `json:"total_all_time"`
-	CurrentStreak    int     `json:"current_streak"`
-	LongestStreak    int     `json:"longest_streak"`
-	AvgDrinkingDays  float64 `json:"avg_drinking_days"`
-	PctSoberDays     float64 `json:"pct_sober_days"`
-	WeeklyTotals     []WeeklyTotal `json:"weekly_totals"`
+	TotalThisWeek   int           `json:"total_this_week"`
+	TotalThisMonth  int           `json:"total_this_month"`
+	TotalAllTime    int           `json:"total_all_time"`
+	CurrentStreak   int           `json:"current_streak"`
+	LongestStreak   int           `json:"longest_streak"`
+	AvgDrinkingDays float64       `json:"avg_drinking_days"`
+	PctSoberDays    float64       `json:"pct_sober_days"`
+	WeeklyTotals    []WeeklyTotal `json:"weekly_totals"`
 }
 
 type WeeklyTotal struct {

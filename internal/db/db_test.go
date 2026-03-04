@@ -30,28 +30,28 @@ func TestCreateAndGetUser(t *testing.T) {
 
 	u := &models.User{
 		ID:           "user1",
-		Username:     "alice",
+		Email:        "alice@test.com",
 		PasswordHash: "hash",
 	}
 	if err := d.CreateUser(u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 
-	got, err := d.GetUserByUsername("alice")
+	got, err := d.GetUserByEmail("alice@test.com")
 	if err != nil {
 		t.Fatalf("get user: %v", err)
 	}
 	if got == nil {
 		t.Fatal("expected user, got nil")
 	}
-	if got.ID != u.ID || got.Username != u.Username {
+	if got.ID != u.ID || got.Email != u.Email {
 		t.Errorf("user mismatch: got %+v want %+v", got, u)
 	}
 }
 
-func TestGetUserByUsername_NotFound(t *testing.T) {
+func TestGetUserByEmail_NotFound(t *testing.T) {
 	d := newTestDB(t)
-	got, err := d.GetUserByUsername("nobody")
+	got, err := d.GetUserByEmail("nobody@test.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,13 +60,13 @@ func TestGetUserByUsername_NotFound(t *testing.T) {
 	}
 }
 
-func TestDuplicateUsername(t *testing.T) {
+func TestDuplicateEmail(t *testing.T) {
 	d := newTestDB(t)
-	u := &models.User{ID: "u1", Username: "alice", PasswordHash: "h"}
+	u := &models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"}
 	if err := d.CreateUser(u); err != nil {
 		t.Fatal(err)
 	}
-	u2 := &models.User{ID: "u2", Username: "alice", PasswordHash: "h"}
+	u2 := &models.User{ID: "u2", Email: "alice@test.com", PasswordHash: "h"}
 	if err := d.CreateUser(u2); err == nil {
 		t.Error("expected unique constraint error")
 	}
@@ -74,7 +74,7 @@ func TestDuplicateUsername(t *testing.T) {
 
 func TestSessionLifecycle(t *testing.T) {
 	d := newTestDB(t)
-	u := &models.User{ID: "u1", Username: "alice", PasswordHash: "h"}
+	u := &models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"}
 	_ = d.CreateUser(u)
 
 	s := &models.Session{
@@ -109,7 +109,7 @@ func TestSessionLifecycle(t *testing.T) {
 
 func TestUpsertLog(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 
 	l := &models.Log{ID: "l1", UserID: "u1", Date: "2024-01-15", Drinks: 2, Note: "beer"}
 	if err := d.UpsertLog(l); err != nil {
@@ -136,7 +136,7 @@ func TestUpsertLog(t *testing.T) {
 
 func TestDeleteLog(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 	_ = d.UpsertLog(&models.Log{ID: "l1", UserID: "u1", Date: "2024-01-15", Drinks: 2})
 
 	if err := d.DeleteLog("u1", "2024-01-15"); err != nil {
@@ -150,7 +150,7 @@ func TestDeleteLog(t *testing.T) {
 
 func TestDeleteUser(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 	_ = d.UpsertLog(&models.Log{ID: "l1", UserID: "u1", Date: "2024-01-15", Drinks: 2})
 	_ = d.CreateSession(&models.Session{Token: "tok", UserID: "u1", ExpiresAt: time.Now().Add(time.Hour)})
 
@@ -166,7 +166,7 @@ func TestDeleteUser(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 
 	stats, err := d.GetStats("u1")
 	if err != nil {
@@ -182,7 +182,7 @@ func TestGetStats_Empty(t *testing.T) {
 
 func TestGetStats_WithData(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 
 	logs := []models.Log{
 		{ID: "l1", UserID: "u1", Date: "2024-01-01", Drinks: 3},
@@ -200,6 +200,40 @@ func TestGetStats_WithData(t *testing.T) {
 	}
 	if stats.TotalAllTime != 8 {
 		t.Errorf("total all time: got %d want 8", stats.TotalAllTime)
+	}
+}
+
+func TestUpdateUserProfile(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	if err := d.UpdateUserProfile("u1", "newalice@test.com", "Alice Smith"); err != nil {
+		t.Fatalf("update profile: %v", err)
+	}
+
+	u, err := d.GetUserByID("u1")
+	if err != nil || u == nil {
+		t.Fatal("get user after update failed")
+	}
+	if u.Email != "newalice@test.com" {
+		t.Errorf("email: got %q want newalice@test.com", u.Email)
+	}
+	if u.DisplayName != "Alice Smith" {
+		t.Errorf("display_name: got %q want Alice Smith", u.DisplayName)
+	}
+}
+
+func TestUpdateUserPassword(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "oldhash"})
+
+	if err := d.UpdateUserPassword("u1", "newhash"); err != nil {
+		t.Fatalf("update password: %v", err)
+	}
+
+	u, _ := d.GetUserByID("u1")
+	if u.PasswordHash != "newhash" {
+		t.Errorf("password hash not updated")
 	}
 }
 
@@ -294,7 +328,7 @@ func TestCalculateStreaks(t *testing.T) {
 
 func TestCleanExpiredSessions(t *testing.T) {
 	d := newTestDB(t)
-	_ = d.CreateUser(&models.User{ID: "u1", Username: "alice", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 
 	_ = d.CreateSession(&models.Session{
 		Token:     "expired",

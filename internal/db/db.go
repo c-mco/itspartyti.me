@@ -77,25 +77,33 @@ func (d *DB) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_logs_user_date ON logs(user_id, date);
 		CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Safe additive migrations — ignore error if column already exists
+	d.conn.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT`)
+
+	return nil
 }
 
 // User operations
 
 func (d *DB) CreateUser(u *models.User) error {
 	_, err := d.conn.Exec(
-		`INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)`,
-		u.ID, u.Username, u.PasswordHash,
+		`INSERT INTO users (id, username, password_hash, display_name) VALUES (?, ?, ?, ?)`,
+		u.ID, u.Email, u.PasswordHash, u.DisplayName,
 	)
 	return err
 }
 
-func (d *DB) GetUserByUsername(username string) (*models.User, error) {
+// GetUserByEmail looks up a user by their email (stored in the 'username' column).
+func (d *DB) GetUserByEmail(email string) (*models.User, error) {
 	u := &models.User{}
 	err := d.conn.QueryRow(
-		`SELECT id, username, password_hash, created_at FROM users WHERE username = ?`,
-		username,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+		`SELECT id, username, COALESCE(display_name,''), password_hash, created_at FROM users WHERE username = ?`,
+		email,
+	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -105,13 +113,31 @@ func (d *DB) GetUserByUsername(username string) (*models.User, error) {
 func (d *DB) GetUserByID(id string) (*models.User, error) {
 	u := &models.User{}
 	err := d.conn.QueryRow(
-		`SELECT id, username, password_hash, created_at FROM users WHERE id = ?`,
+		`SELECT id, username, COALESCE(display_name,''), password_hash, created_at FROM users WHERE id = ?`,
 		id,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+	).Scan(&u.ID, &u.Email, &u.DisplayName, &u.PasswordHash, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return u, err
+}
+
+// UpdateUserProfile updates the email and display name for the given user.
+func (d *DB) UpdateUserProfile(userID, email, displayName string) error {
+	_, err := d.conn.Exec(
+		`UPDATE users SET username = ?, display_name = ? WHERE id = ?`,
+		email, displayName, userID,
+	)
+	return err
+}
+
+// UpdateUserPassword replaces the password hash for the given user.
+func (d *DB) UpdateUserPassword(userID, hash string) error {
+	_, err := d.conn.Exec(
+		`UPDATE users SET password_hash = ? WHERE id = ?`,
+		hash, userID,
+	)
+	return err
 }
 
 func (d *DB) DeleteUser(userID string) error {

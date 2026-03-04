@@ -34,8 +34,8 @@
         <div id="panel-login" role="tabpanel">
           <form id="form-login" novalidate>
             <div class="field">
-              <label for="login-user">username</label>
-              <input id="login-user" type="text" autocomplete="username" required />
+              <label for="login-user">email</label>
+              <input id="login-user" type="email" autocomplete="email" required />
             </div>
             <div class="field">
               <label for="login-pass">password</label>
@@ -49,11 +49,14 @@
         <div id="panel-register" role="tabpanel" hidden>
           <form id="form-register" novalidate>
             <div class="field">
-              <label for="reg-user">username
-                <span class="hint">3–32 chars · letters, digits, _ -</span>
+              <label for="reg-email">email</label>
+              <input id="reg-email" type="email" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label for="reg-name">name
+                <span class="hint">optional · shown instead of email</span>
               </label>
-              <input id="reg-user" type="text" autocomplete="username"
-                     required minlength="3" maxlength="32" />
+              <input id="reg-name" type="text" autocomplete="name" maxlength="64" />
             </div>
             <div class="field">
               <label for="reg-pass">password
@@ -79,11 +82,6 @@
         <div class="header-right">
           <button id="btn-account-toggle" class="btn-ghost header-account-btn"></button>
           <button id="btn-logout" class="btn-ghost">logout</button>
-        </div>
-        <div id="account-panel" class="account-panel" hidden>
-          <p>Permanently delete your account and all logs. Cannot be undone.</p>
-          <button id="btn-delete-account" class="btn-danger">delete account</button>
-          <div id="err-delete-account" class="form-err" role="alert" aria-live="polite"></div>
         </div>
       </header>
 
@@ -207,6 +205,58 @@
 
     </div><!-- /main-screen -->
   </div><!-- /app -->
+
+  <!-- ═══════════════════════════════════════════
+       ACCOUNT SCREEN (full-screen overlay)
+       ═══════════════════════════════════════════ -->
+  <div id="account-screen" class="account-screen" hidden aria-label="Account settings">
+    <header class="account-screen-hdr">
+      <button id="btn-account-back" class="icon-btn" aria-label="Back">←</button>
+      <span class="account-screen-title">account</span>
+    </header>
+    <div class="account-screen-body">
+
+      <section class="account-section">
+        <h3 class="account-section-title">profile</h3>
+        <div class="field">
+          <label for="acc-email">email</label>
+          <input id="acc-email" type="email" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="acc-name">name
+            <span class="hint">shown instead of email</span>
+          </label>
+          <input id="acc-name" type="text" autocomplete="name" maxlength="64" placeholder="optional" />
+        </div>
+        <div id="err-profile" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-save-profile" class="btn-primary">save profile</button>
+      </section>
+
+      <section class="account-section">
+        <h3 class="account-section-title">change password</h3>
+        <div class="field">
+          <label for="acc-cur-pass">current password</label>
+          <input id="acc-cur-pass" type="password" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="acc-new-pass">new password
+            <span class="hint">min 8 characters</span>
+          </label>
+          <input id="acc-new-pass" type="password" autocomplete="new-password" minlength="8" />
+        </div>
+        <div id="err-password" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-change-password" class="btn-primary">update password</button>
+      </section>
+
+      <section class="account-section account-danger-zone">
+        <h3 class="account-section-title">danger zone</h3>
+        <p class="account-danger-desc">Permanently delete your account and all logs. Cannot be undone.</p>
+        <div id="err-delete-account" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-delete-account" class="btn-danger">delete account</button>
+      </section>
+
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════
        LOG MODAL

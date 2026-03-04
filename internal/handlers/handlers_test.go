@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,21 +71,67 @@ func parseJSON(t *testing.T, rr *httptest.ResponseRecorder, v any) {
 	}
 }
 
+// registerUser registers a user via the API using the email field.
+func registerUser(t *testing.T, h *Handler, email, password string) {
+	t.Helper()
+	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
+		jsonBody(t, map[string]string{"email": email, "password": password}))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("register failed: %s", rr.Body.String())
+	}
+}
+
+// loginUser logs in via the API and returns the session cookie.
+func loginUser(t *testing.T, h *Handler, email, password string) *http.Cookie {
+	t.Helper()
+	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": email, "password": password}))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("login failed: %s", rr.Body.String())
+	}
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			return c
+		}
+	}
+	t.Fatal("no session cookie in response")
+	return nil
+}
+
 // ===== Register =====
 
 func TestRegister_HappyPath(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
-		jsonBody(t, map[string]string{"username": "alice", "password": "password123"}))
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
 
 	if rr.Code != http.StatusCreated {
 		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusCreated, rr.Body.String())
 	}
 }
 
-func TestRegister_DuplicateUsername(t *testing.T) {
+func TestRegister_WithDisplayName(t *testing.T) {
 	h, _ := newTestHandler(t)
-	body := map[string]string{"username": "alice", "password": "password123"}
+	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
+		jsonBody(t, map[string]any{"email": "alice@test.com", "password": "password123", "display_name": "Alice"}))
+	if rr.Code != http.StatusCreated {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+}
+
+func TestRegister_LegacyUsernameField(t *testing.T) {
+	// Backward compat: still accept 'username' field
+	h, _ := newTestHandler(t)
+	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
+		jsonBody(t, map[string]string{"username": "alice@test.com", "password": "password123"}))
+	if rr.Code != http.StatusCreated {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+}
+
+func TestRegister_DuplicateEmail(t *testing.T) {
+	h, _ := newTestHandler(t)
+	body := map[string]string{"email": "alice@test.com", "password": "password123"}
 	doRequest(t, h.Register, http.MethodPost, "/api/register", jsonBody(t, body))
 	rr := doRequest(t, h.Register, http.MethodPost, "/api/register", jsonBody(t, body))
 	if rr.Code != http.StatusConflict {
@@ -92,10 +139,10 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 	}
 }
 
-func TestRegister_ShortUsername(t *testing.T) {
+func TestRegister_InvalidEmail(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
-		jsonBody(t, map[string]string{"username": "ab", "password": "password123"}))
+		jsonBody(t, map[string]string{"email": "notanemail", "password": "password123"}))
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusBadRequest)
 	}
@@ -104,16 +151,16 @@ func TestRegister_ShortUsername(t *testing.T) {
 func TestRegister_ShortPassword(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
-		jsonBody(t, map[string]string{"username": "alice", "password": "short"}))
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "short"}))
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusBadRequest)
 	}
 }
 
-func TestRegister_InvalidChars(t *testing.T) {
+func TestRegister_MissingEmail(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
-		jsonBody(t, map[string]string{"username": "alice!", "password": "password123"}))
+		jsonBody(t, map[string]string{"password": "password123"}))
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusBadRequest)
 	}
@@ -129,45 +176,20 @@ func TestRegister_WrongMethod(t *testing.T) {
 
 // ===== Login =====
 
-func registerUser(t *testing.T, h *Handler, username, password string) {
-	t.Helper()
-	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
-		jsonBody(t, map[string]string{"username": username, "password": password}))
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("register failed: %s", rr.Body.String())
-	}
-}
-
-func loginUser(t *testing.T, h *Handler, username, password string) *http.Cookie {
-	t.Helper()
-	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
-		jsonBody(t, map[string]string{"username": username, "password": password}))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("login failed: %s", rr.Body.String())
-	}
-	for _, c := range rr.Result().Cookies() {
-		if c.Name == sessionCookieName {
-			return c
-		}
-	}
-	t.Fatal("no session cookie in response")
-	return nil
-}
-
 func TestLogin_HappyPath(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
-		jsonBody(t, map[string]string{"username": "alice", "password": "password123"}))
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
 	}
 	var data map[string]string
 	parseJSON(t, rr, &data)
-	if data["username"] != "alice" {
-		t.Errorf("username: got %q want %q", data["username"], "alice")
+	if data["email"] != "alice@test.com" {
+		t.Errorf("email: got %q want %q", data["email"], "alice@test.com")
 	}
 
 	var found bool
@@ -182,12 +204,24 @@ func TestLogin_HappyPath(t *testing.T) {
 	}
 }
 
-func TestLogin_WrongPassword(t *testing.T) {
+func TestLogin_LegacyUsernameField(t *testing.T) {
+	// Backward compat: login with 'username' field
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
-		jsonBody(t, map[string]string{"username": "alice", "password": "wrongpassword"}))
+		jsonBody(t, map[string]string{"username": "alice@test.com", "password": "password123"}))
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
+	}
+}
+
+func TestLogin_WrongPassword(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "wrongpassword"}))
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
 	}
@@ -196,7 +230,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 func TestLogin_UnknownUser(t *testing.T) {
 	h, _ := newTestHandler(t)
 	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
-		jsonBody(t, map[string]string{"username": "nobody", "password": "password123"}))
+		jsonBody(t, map[string]string{"email": "nobody@test.com", "password": "password123"}))
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
 	}
@@ -222,12 +256,12 @@ func TestStats_RequiresAuth(t *testing.T) {
 
 func TestExpiredSession(t *testing.T) {
 	h, d := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	// Manually expire the session
 	_ = d.DeleteSession(cookie.Value)
-	user, _ := d.GetUserByUsername("alice")
+	user, _ := d.GetUserByEmail("alice@test.com")
 	_ = d.CreateSession(&models.Session{
 		Token:     cookie.Value,
 		UserID:    user.ID,
@@ -244,8 +278,8 @@ func TestExpiredSession(t *testing.T) {
 
 func TestCreateAndGetLogs(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	// Create log
 	rr := doRequest(t, h.Logs, http.MethodPost, "/api/logs",
@@ -270,8 +304,8 @@ func TestCreateAndGetLogs(t *testing.T) {
 
 func TestCreateLog_InvalidDate(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Logs, http.MethodPost, "/api/logs",
 		jsonBody(t, map[string]any{"date": "not-a-date", "drinks": 1}),
@@ -283,8 +317,8 @@ func TestCreateLog_InvalidDate(t *testing.T) {
 
 func TestCreateLog_NegativeDrinks(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Logs, http.MethodPost, "/api/logs",
 		jsonBody(t, map[string]any{"date": "2024-01-15", "drinks": -1}),
@@ -296,8 +330,8 @@ func TestCreateLog_NegativeDrinks(t *testing.T) {
 
 func TestDeleteLog_HappyPath(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	doRequest(t, h.Logs, http.MethodPost, "/api/logs",
 		jsonBody(t, map[string]any{"date": "2024-01-15", "drinks": 2}), cookie)
@@ -315,8 +349,8 @@ func TestDeleteLog_HappyPath(t *testing.T) {
 
 func TestDeleteLog_InvalidDate(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	req, _ := http.NewRequest(http.MethodDelete, "/api/logs/notadate", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -333,8 +367,8 @@ func TestDeleteLog_InvalidDate(t *testing.T) {
 
 func TestStats_HappyPath(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Stats, http.MethodGet, "/api/stats", nil, cookie)
 	if rr.Code != http.StatusOK {
@@ -355,8 +389,8 @@ func TestStats_HappyPath(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Logout, http.MethodPost, "/api/logout", nil, cookie)
 	if rr.Code != http.StatusOK {
@@ -374,10 +408,10 @@ func TestLogout(t *testing.T) {
 
 func TestDataIsolation(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	registerUser(t, h, "bob", "password456")
-	aliceCookie := loginUser(t, h, "alice", "password123")
-	bobCookie := loginUser(t, h, "bob", "password456")
+	registerUser(t, h, "alice@test.com", "password123")
+	registerUser(t, h, "bob@test.com", "password456")
+	aliceCookie := loginUser(t, h, "alice@test.com", "password123")
+	bobCookie := loginUser(t, h, "bob@test.com", "password456")
 
 	// Alice logs a drink
 	doRequest(t, h.Logs, http.MethodPost, "/api/logs",
@@ -396,8 +430,8 @@ func TestDataIsolation(t *testing.T) {
 
 func TestDeleteAccount(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	req, _ := http.NewRequest(http.MethodDelete, "/api/account", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -411,9 +445,119 @@ func TestDeleteAccount(t *testing.T) {
 
 	// Re-login should fail
 	rr = doRequest(t, h.Login, http.MethodPost, "/api/login",
-		jsonBody(t, map[string]string{"username": "alice", "password": "password123"}))
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("login after delete: got %d want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+// ===== Update profile =====
+
+func TestUpdateProfile_HappyPath(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.UpdateProfile, http.MethodPut, "/api/account",
+		jsonBody(t, map[string]string{"email": "alice2@test.com", "display_name": "Alice"}),
+		cookie)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var data map[string]string
+	parseJSON(t, rr, &data)
+	if data["email"] != "alice2@test.com" {
+		t.Errorf("email: got %q want alice2@test.com", data["email"])
+	}
+	if data["display_name"] != "Alice" {
+		t.Errorf("display_name: got %q want Alice", data["display_name"])
+	}
+}
+
+func TestUpdateProfile_InvalidEmail(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.UpdateProfile, http.MethodPut, "/api/account",
+		jsonBody(t, map[string]string{"email": "notanemail"}),
+		cookie)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateProfile_NoAuth(t *testing.T) {
+	h, _ := newTestHandler(t)
+	rr := doRequest(t, h.UpdateProfile, http.MethodPut, "/api/account",
+		jsonBody(t, map[string]string{"email": "alice@test.com"}))
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+// ===== Change password =====
+
+func TestChangePassword_HappyPath(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.ChangePassword, http.MethodPut, "/api/account/password",
+		jsonBody(t, map[string]string{"current_password": "password123", "new_password": "newpassword456"}),
+		cookie)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	// Old password should no longer work
+	rr = doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("old password should fail: got %d", rr.Code)
+	}
+
+	// New password should work
+	rr = doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "newpassword456"}))
+	if rr.Code != http.StatusOK {
+		t.Errorf("new password should succeed: got %d", rr.Code)
+	}
+}
+
+func TestChangePassword_WrongCurrentPassword(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.ChangePassword, http.MethodPut, "/api/account/password",
+		jsonBody(t, map[string]string{"current_password": "wrongpassword", "new_password": "newpassword456"}),
+		cookie)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestChangePassword_ShortNewPassword(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.ChangePassword, http.MethodPut, "/api/account/password",
+		jsonBody(t, map[string]string{"current_password": "password123", "new_password": "short"}),
+		cookie)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestChangePassword_NoAuth(t *testing.T) {
+	h, _ := newTestHandler(t)
+	rr := doRequest(t, h.ChangePassword, http.MethodPut, "/api/account/password",
+		jsonBody(t, map[string]string{"current_password": "p", "new_password": "newpassword456"}))
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
 	}
 }
 
@@ -421,8 +565,8 @@ func TestDeleteAccount(t *testing.T) {
 
 func TestMe_HappyPath(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Me, http.MethodGet, "/api/me", nil, cookie)
 	if rr.Code != http.StatusOK {
@@ -430,8 +574,8 @@ func TestMe_HappyPath(t *testing.T) {
 	}
 	var data map[string]string
 	parseJSON(t, rr, &data)
-	if data["username"] != "alice" {
-		t.Errorf("username: got %q want alice", data["username"])
+	if data["email"] != "alice@test.com" {
+		t.Errorf("email: got %q want alice@test.com", data["email"])
 	}
 }
 
@@ -445,8 +589,8 @@ func TestMe_NoAuth(t *testing.T) {
 
 func TestMe_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 	rr := doRequest(t, h.Me, http.MethodPost, "/api/me", nil, cookie)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusMethodNotAllowed)
@@ -482,6 +626,19 @@ func TestCORS_Options(t *testing.T) {
 	h.CORS(inner).ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusNoContent)
+	}
+}
+
+func TestCORS_AllowsPUT(t *testing.T) {
+	h, _ := newTestHandler(t)
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	req, _ := http.NewRequest(http.MethodPut, "/api/account", nil)
+	rr := httptest.NewRecorder()
+	h.CORS(inner).ServeHTTP(rr, req)
+	if !strings.Contains(rr.Header().Get("Access-Control-Allow-Methods"), "PUT") {
+		t.Error("CORS should allow PUT")
 	}
 }
 
@@ -526,8 +683,8 @@ func TestLogout_NoAuth(t *testing.T) {
 
 func TestLogs_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 	rr := doRequest(t, h.Logs, http.MethodPut, "/api/logs", nil, cookie)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusMethodNotAllowed)
@@ -536,8 +693,8 @@ func TestLogs_WrongMethod(t *testing.T) {
 
 func TestStats_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 	rr := doRequest(t, h.Stats, http.MethodPost, "/api/stats", nil, cookie)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status: got %d want %d", rr.Code, http.StatusMethodNotAllowed)
@@ -546,8 +703,8 @@ func TestStats_WrongMethod(t *testing.T) {
 
 func TestDeleteLog_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/logs/2024-01-15", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -572,8 +729,8 @@ func TestDeleteLog_NoAuth(t *testing.T) {
 
 func TestDeleteAccount_WrongMethod(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/account", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -598,8 +755,8 @@ func TestDeleteAccount_NoAuth(t *testing.T) {
 
 func TestCreateLog_NoteTooLong(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	longNote := make([]byte, 501)
 	for i := range longNote {
@@ -615,8 +772,8 @@ func TestCreateLog_NoteTooLong(t *testing.T) {
 
 func TestCreateLog_TooManyDrinks(t *testing.T) {
 	h, _ := newTestHandler(t)
-	registerUser(t, h, "alice", "password123")
-	cookie := loginUser(t, h, "alice", "password123")
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
 
 	rr := doRequest(t, h.Logs, http.MethodPost, "/api/logs",
 		jsonBody(t, map[string]any{"date": "2024-01-15", "drinks": 101}),

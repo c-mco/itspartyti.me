@@ -98,6 +98,7 @@ const api = {
   },
   get:  p     => api.req('GET',    p),
   post: (p,b) => api.req('POST',   p, b),
+  put:  (p,b) => api.req('PUT',    p, b),
   del:  p     => api.req('DELETE', p),
 };
 
@@ -108,7 +109,7 @@ const api = {
    ═══════════════════════════════════════════════════════════════ */
 
 const S = {
-  user:           null,           // logged-in username string
+  user:           null,           // { email, display_name }
   logs:           [],             // array of log objects from API
   stats:          null,           // stats object from API
   map:            new Map(),      // date string → log object  (derived)
@@ -133,17 +134,22 @@ function showAuth() {
   $id('auth-screen').hidden = false;
 }
 
+function _displayName() {
+  if (!S.user) return '';
+  return S.user.display_name || S.user.email.split('@')[0];
+}
+
 function showMain() {
   $id('auth-screen').hidden = true;
   $id('main-screen').hidden = false;
-  $id('btn-account-toggle').textContent = S.user + ' ▾';
+  $id('btn-account-toggle').textContent = _displayName() + ' ▾';
   loadAllData();
 }
 
 async function checkAuth() {
   try {
     const d = await api.get('/api/me');
-    S.user = d.username;
+    S.user = { email: d.email, display_name: d.display_name || '' };
     showMain();
   } catch {
     showAuth();
@@ -174,11 +180,10 @@ function initAuthForms() {
     errEl.textContent = '';
     submit.disabled   = true;
     try {
-      const d = await api.post('/api/login', {
-        username: $id('login-user').value.trim(),
-        password: $id('login-pass').value,
-      });
-      S.user = d.username;
+      const email    = $id('login-user').value.trim();
+      const password = $id('login-pass').value;
+      const d = await api.post('/api/login', { email, password });
+      S.user = { email: d.email, display_name: d.display_name || '' };
       showMain();
     } catch (err) {
       errEl.textContent = err.message;
@@ -195,11 +200,12 @@ function initAuthForms() {
     errEl.textContent = '';
     submit.disabled   = true;
     try {
-      const username = $id('reg-user').value.trim();
-      const password = $id('reg-pass').value;
-      await api.post('/api/register', { username, password });
-      const d = await api.post('/api/login', { username, password });
-      S.user = d.username;
+      const email        = $id('reg-email').value.trim();
+      const display_name = $id('reg-name').value.trim();
+      const password     = $id('reg-pass').value;
+      await api.post('/api/register', { email, display_name, password });
+      const d = await api.post('/api/login', { email, password });
+      S.user = { email: d.email, display_name: d.display_name || '' };
       showMain();
     } catch (err) {
       errEl.textContent = err.message;
@@ -213,6 +219,7 @@ function initLogout() {
   $id('btn-logout').addEventListener('click', async () => {
     try { await api.post('/api/logout'); } catch { /* ignore */ }
     S.user = null; S.logs = []; S.stats = null; S.map.clear();
+    $id('account-screen').hidden = true;
     showAuth();
   });
 }
@@ -1224,39 +1231,81 @@ function initJournalScrubber() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ACCOUNT PANEL
+   ACCOUNT SCREEN
    ═══════════════════════════════════════════════════════════════ */
 
-function _closeAccountPanel() {
-  $id('account-panel').hidden = true;
+function openAccountScreen() {
+  // Populate fields with current values
+  $id('acc-email').value = S.user?.email || '';
+  $id('acc-name').value  = S.user?.display_name || '';
+  $id('err-profile').textContent   = '';
+  $id('err-password').textContent  = '';
+  $id('err-delete-account').textContent = '';
+  $id('acc-cur-pass').value = '';
+  $id('acc-new-pass').value = '';
+  // Reset delete confirm state
   _accountDeletePending = false;
   $id('btn-delete-account').textContent = 'delete account';
-  $id('err-delete-account').textContent = '';
+  $id('account-screen').hidden = false;
 }
 
-function initAccountPanel() {
-  $id('btn-account-toggle').addEventListener('click', e => {
-    e.stopPropagation();
-    const panel = $id('account-panel');
-    if (panel.hidden) {
-      panel.hidden = false;
-    } else {
-      _closeAccountPanel();
+function closeAccountScreen() {
+  $id('account-screen').hidden = true;
+}
+
+function initAccountScreen() {
+  $id('btn-account-toggle').addEventListener('click', openAccountScreen);
+  $id('btn-account-back').addEventListener('click', closeAccountScreen);
+
+  // Save profile
+  $id('btn-save-profile').addEventListener('click', async () => {
+    const email       = $id('acc-email').value.trim();
+    const displayName = $id('acc-name').value.trim();
+    const errEl       = $id('err-profile');
+    errEl.textContent = '';
+    try {
+      const d = await api.put('/api/account', { email, display_name: displayName });
+      S.user = { email: d.email, display_name: d.display_name || '' };
+      $id('btn-account-toggle').textContent = _displayName() + ' ▾';
+      errEl.textContent = '✓ saved';
+      errEl.style.color = 'var(--c-sober)';
+      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 2000);
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
     }
   });
 
-  document.addEventListener('click', e => {
-    const panel = $id('account-panel');
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== $id('btn-account-toggle')) {
-      _closeAccountPanel();
+  // Change password
+  $id('btn-change-password').addEventListener('click', async () => {
+    const curPass = $id('acc-cur-pass').value;
+    const newPass = $id('acc-new-pass').value;
+    const errEl   = $id('err-password');
+    errEl.textContent = '';
+    if (!curPass || !newPass) {
+      errEl.textContent = 'Both fields are required.';
+      return;
+    }
+    try {
+      await api.put('/api/account/password', {
+        current_password: curPass,
+        new_password:     newPass,
+      });
+      $id('acc-cur-pass').value = '';
+      $id('acc-new-pass').value = '';
+      errEl.textContent = '✓ password updated';
+      errEl.style.color = 'var(--c-sober)';
+      setTimeout(() => { errEl.textContent = ''; errEl.style.color = ''; }, 2000);
+    } catch (err) {
+      errEl.style.color = '';
+      errEl.textContent = err.message;
     }
   });
-}
 
-function initDeleteAccount() {
-  const btn = $id('btn-delete-account');
-
-  btn.addEventListener('click', async () => {
+  // Delete account — two-tap confirm
+  $id('btn-delete-account').addEventListener('click', async () => {
+    const btn   = $id('btn-delete-account');
+    const errEl = $id('err-delete-account');
     if (!_accountDeletePending) {
       _accountDeletePending = true;
       btn.textContent = 'confirm — delete everything';
@@ -1267,10 +1316,10 @@ function initDeleteAccount() {
     try {
       await api.del('/api/account');
       S.user = null; S.logs = []; S.stats = null; S.map.clear();
-      $id('account-panel').hidden = true;
+      closeAccountScreen();
       showAuth();
     } catch (err) {
-      $id('err-delete-account').textContent = err.message;
+      errEl.textContent = err.message;
     }
   });
 }
@@ -1289,8 +1338,7 @@ function init() {
   initModal();
   initYearScrub();
   initQuickAdd();
-  initAccountPanel();
-  initDeleteAccount();
+  initAccountScreen();
   initJournalScrubber();
   checkAuth();
 }

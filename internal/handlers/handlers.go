@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/c-mco/itspartyti.me/internal/db"
 	"github.com/c-mco/itspartyti.me/internal/models"
@@ -20,7 +19,8 @@ const (
 	sessionCookieName = "session"
 	sessionDuration   = 30 * 24 * time.Hour
 	bcryptCost        = 12
-	maxUsernameLen    = 32
+	maxEmailLen       = 254 // RFC 5321
+	maxDisplayNameLen = 64
 	maxPasswordLen    = 72 // bcrypt limit
 	maxNoteLen        = 500
 	rateLimitWindow   = time.Minute
@@ -116,6 +116,15 @@ func generateID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// isValidEmail performs simple email validation.
+func isValidEmail(s string) bool {
+	parts := strings.SplitN(s, "@", 2)
+	return len(parts) == 2 &&
+		len(parts[0]) > 0 &&
+		len(parts[1]) > 3 &&
+		strings.Contains(parts[1], ".")
+}
+
 func (h *Handler) sessionFromRequest(r *http.Request) (*models.Session, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
@@ -139,10 +148,7 @@ func (h *Handler) requireAuth(r *http.Request) (*models.Session, error) {
 	return h.sessionFromRequest(r)
 }
 
-// resolveUserID resolves the authenticated user ID from the request, trying
-// auth methods in order. Currently: session cookie only.
-// Future: add a signed URL token branch here (for NFC/QR use) before the
-// final return, checking r.URL.Query().Get("token") against a verified token store.
+// resolveUserID resolves the authenticated user ID from the request.
 func (h *Handler) resolveUserID(r *http.Request) (string, error) {
 	session, err := h.sessionFromRequest(r)
 	if err != nil {
@@ -181,7 +187,7 @@ func (h *Handler) CORS(next http.Handler) http.Handler {
 			}
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == http.MethodOptions {
@@ -205,25 +211,40 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Email       string `json:"email"`
+		Username    string `json:"username"` // backward compat alias
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	username := strings.TrimSpace(req.Username)
-	if len(username) < 3 || len(username) > maxUsernameLen {
-		writeError(w, http.StatusBadRequest, "username must be 3–32 characters")
+	// Prefer email field; fall back to username field
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		email = strings.TrimSpace(req.Username)
+	}
+	if email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
 		return
 	}
-	for _, c := range username {
-		if !unicode.IsLetter(c) && !unicode.IsDigit(c) && c != '_' && c != '-' {
-			writeError(w, http.StatusBadRequest, "username may only contain letters, digits, _ and -")
-			return
-		}
+	if len(email) > maxEmailLen {
+		writeError(w, http.StatusBadRequest, "email too long")
+		return
 	}
+	if !isValidEmail(email) {
+		writeError(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
+
+	displayName := strings.TrimSpace(req.DisplayName)
+	if len(displayName) > maxDisplayNameLen {
+		writeError(w, http.StatusBadRequest, "name too long (max 64 characters)")
+		return
+	}
+
 	if len(req.Password) < 8 {
 		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
@@ -247,12 +268,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user := &models.User{
 		ID:           id,
-		Username:     username,
+		Email:        email,
+		DisplayName:  displayName,
 		PasswordHash: string(hash),
 	}
 	if err := h.DB.CreateUser(user); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			writeError(w, http.StatusConflict, "username already taken")
+			writeError(w, http.StatusConflict, "an account with that email already exists")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -275,7 +297,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
+		Username string `json:"username"` // backward compat alias
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -283,7 +306,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.DB.GetUserByUsername(strings.TrimSpace(req.Username))
+	// Prefer email field; fall back to username field
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		email = strings.TrimSpace(req.Username)
+	}
+
+	user, err := h.DB.GetUserByEmail(email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -330,7 +359,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Expires:  session.ExpiresAt,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"email":        user.Email,
+		"display_name": user.DisplayName,
+		// Legacy field for any clients still checking 'username'
+		"username": user.Email,
+	})
 }
 
 // --- Logout ---
@@ -488,7 +522,19 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
-// --- Delete account ---
+// --- Account (profile update + delete) ---
+
+// Account dispatches PUT (update profile) and DELETE (delete account) on /api/account.
+func (h *Handler) Account(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodDelete:
+		h.DeleteAccount(w, r)
+	case http.MethodPut:
+		h.UpdateProfile(w, r)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
 
 func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
@@ -516,6 +562,119 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "account deleted"})
+}
+
+func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	session, err := h.requireAuth(r)
+	if err != nil || session == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		Email       string `json:"email"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if len(email) > maxEmailLen {
+		writeError(w, http.StatusBadRequest, "email too long")
+		return
+	}
+	if !isValidEmail(email) {
+		writeError(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
+
+	displayName := strings.TrimSpace(req.DisplayName)
+	if len(displayName) > maxDisplayNameLen {
+		writeError(w, http.StatusBadRequest, "name too long (max 64 characters)")
+		return
+	}
+
+	if err := h.DB.UpdateUserProfile(session.UserID, email, displayName); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			writeError(w, http.StatusConflict, "an account with that email already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"email":        email,
+		"display_name": displayName,
+	})
+}
+
+// --- Change password ---
+
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	session, err := h.requireAuth(r)
+	if err != nil || session == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	user, err := h.DB.GetUserByID(session.UserID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+		return
+	}
+	if len(req.NewPassword) > maxPasswordLen {
+		writeError(w, http.StatusBadRequest, "new password too long")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcryptCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err := h.DB.UpdateUserPassword(session.UserID, string(hash)); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated"})
 }
 
 // --- Add drink (quick +1) ---
@@ -569,5 +728,10 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"username": user.Username})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"email":        user.Email,
+		"display_name": user.DisplayName,
+		// Legacy field for any clients still checking 'username'
+		"username": user.Email,
+	})
 }
