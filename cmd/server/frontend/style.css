@@ -624,17 +624,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   line-height: 1;
 }
 
-.mcell-drinks {
-  font-size: 0.9rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-/* Foreground colours on logged cells */
-.mcell.sober    .mcell-drinks { color: var(--c-sober-fg);    }
-.mcell.light    .mcell-drinks { color: var(--c-light-fg);    }
-.mcell.moderate .mcell-drinks { color: var(--c-moderate-fg); }
-.mcell.heavy    .mcell-drinks { color: var(--c-heavy-fg);    }
+/* Day number needs contrast against bright cell fills */
+.mcell.sober    .mcell-num { color: var(--c-sober-fg);    }
+.mcell.light    .mcell-num { color: var(--c-light-fg);    }
+.mcell.moderate .mcell-num { color: var(--c-moderate-fg); }
+.mcell.heavy    .mcell-num { color: var(--c-heavy-fg);    }
 
 /* ═══════════════════════════════════════════════════════════════
    STATS STRIP
@@ -966,7 +960,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
    ═══════════════════════════════════════════════════════════════ */
 .quickadd-btn {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 0.75rem));
   right: 1.5rem;
   z-index: 50;
   width: 64px;
@@ -1003,7 +997,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   border-radius: 50%;
   pointer-events: none;
   z-index: 9999;
-  animation: bubble-rise var(--dur, 1s) ease-out var(--delay, 0s) forwards;
+  animation: bubble-rise var(--dur, 1s) ease-out var(--delay, 0s) both;
 }
 @keyframes bubble-rise {
   0% {
@@ -1024,7 +1018,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
    ═══════════════════════════════════════════════════════════════ */
 .quickadd-toast:not([hidden]) {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 0.75rem));
   /* sit left of the button, flush right edge with button's left edge */
   left: 1rem;
   right: calc(1.5rem + 64px + 0.75rem);

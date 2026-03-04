@@ -252,6 +252,31 @@ func TestCalculateStreaks(t *testing.T) {
 			wantCur: 0,
 			wantLng: 2,
 		},
+		{
+			// Unlogged days between two drinking days should count as sober.
+			// Jan 8 = drink, Jan 9+10 unlogged (sober), Jan 11 = drink.
+			// Longest sober run = 2 (Jan 9+10). Current = 0 (today is a drink day).
+			name: "unlogged gap days treated as sober",
+			records: []dayRecord{
+				{"2024-01-11", 3},
+				{"2024-01-08", 3},
+			},
+			today:   "2024-01-11",
+			wantCur: 0,
+			wantLng: 2,
+		},
+		{
+			// Only drinking days logged, large gap — longest streak is the gap.
+			// Jan 1 = drink, Jan 8 = drink, gap Jan 2–7 = 6 sober days.
+			name: "large gap between drinking days",
+			records: []dayRecord{
+				{"2024-01-08", 2},
+				{"2024-01-01", 2},
+			},
+			today:   "2024-01-08",
+			wantCur: 0,
+			wantLng: 6,
+		},
 	}
 
 	for _, tc := range tests {

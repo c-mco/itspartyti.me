@@ -265,6 +265,8 @@ function applyLogDelete(date) {
    ═══════════════════════════════════════════════════════════════ */
 
 let _saving = false;
+let _deleteConfirmPending = false;
+let _accountDeletePending = false;
 
 function openModal(dateStr) {
   if (isFuture(dateStr)) return;
@@ -280,11 +282,16 @@ function openModal(dateStr) {
   $id('modal-err').textContent  = '';
   $id('btn-modal-delete').hidden = !log;
 
+  _deleteConfirmPending = false;
   $id('modal').hidden = false;
-  $id('input-drinks').focus();
 }
 
 function closeModal() {
+  _deleteConfirmPending = false;
+  const delBtn = $id('btn-modal-delete');
+  delBtn.textContent = 'delete';
+  delBtn.classList.remove('btn-danger');
+  delBtn.classList.add('btn-ghost');
   $id('modal').hidden = true;
   S.modal.date = null;
 }
@@ -337,9 +344,16 @@ function initModal() {
     }
   });
 
-  // Delete entry
+  // Delete entry — two-tap confirm, no native dialog
   $id('btn-modal-delete').addEventListener('click', async () => {
-    if (!confirm('Delete this entry?')) return;
+    if (!_deleteConfirmPending) {
+      _deleteConfirmPending = true;
+      const btn = $id('btn-modal-delete');
+      btn.textContent = 'confirm delete';
+      btn.classList.remove('btn-ghost');
+      btn.classList.add('btn-danger');
+      return;
+    }
     try {
       await api.del(`/api/logs/${S.modal.date}`);
       applyLogDelete(S.modal.date);
@@ -888,9 +902,6 @@ function renderMonthGrid() {
 
     const cell = el('div', attrs);
     cell.appendChild(el('span', { class: 'mcell-num', 'aria-hidden': 'true' }, d));
-    if (log != null) {
-      cell.appendChild(el('span', { class: 'mcell-drinks', 'aria-hidden': 'true' }, log.drinks));
-    }
     frag.appendChild(cell);
   }
 
@@ -975,7 +986,7 @@ function spawnBubbles() {
     const colour = colours[Math.floor(Math.random() * colours.length)];
 
     b.style.cssText = `
-      left: ${startX}px; top: ${cy}px;
+      left: ${startX}px; top: ${rect.top}px;
       width: ${size}px; height: ${size}px;
       background: ${colour};
       border: 1px solid rgba(255,255,255,0.3);
@@ -1118,15 +1129,29 @@ function renderJournal() {
    ═══════════════════════════════════════════════════════════════ */
 
 function initDeleteAccount() {
-  $id('btn-delete-account').addEventListener('click', async () => {
-    if (!confirm('Delete your account and all logs permanently?\nThis cannot be undone.')) return;
+  const btn = $id('btn-delete-account');
+
+  btn.addEventListener('click', async () => {
+    if (!_accountDeletePending) {
+      _accountDeletePending = true;
+      btn.textContent = 'confirm — delete everything';
+      return;
+    }
+    _accountDeletePending = false;
+    btn.textContent = 'delete account';
     try {
       await api.del('/api/account');
       S.user = null; S.logs = []; S.stats = null; S.map.clear();
       showAuth();
     } catch (err) {
-      alert('Error: ' + err.message);
+      $id('err-delete-account').textContent = err.message;
     }
+  });
+
+  // Reset primed state when section is toggled closed
+  document.querySelector('.account-det').addEventListener('toggle', () => {
+    _accountDeletePending = false;
+    btn.textContent = 'delete account';
   });
 }
 

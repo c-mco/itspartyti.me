@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"sort"
 	"time"
 
 	"github.com/c-mco/itspartyti.me/internal/models"
@@ -251,32 +250,25 @@ func (d *DB) GetStats(userID string) (*models.Stats, error) {
 
 	// Aggregated counts
 	var totalWeek, totalMonth, totalAll int
-	var drinkingDays, soberDays int
+	var drinkingDays int
 
 	err := d.conn.QueryRow(`
 		SELECT
 			COALESCE(SUM(CASE WHEN date >= ? THEN drinks ELSE 0 END), 0) as week,
 			COALESCE(SUM(CASE WHEN date >= ? THEN drinks ELSE 0 END), 0) as month,
 			COALESCE(SUM(drinks), 0) as all_time,
-			COALESCE(SUM(CASE WHEN drinks > 0 THEN 1 ELSE 0 END), 0) as drinking_days,
-			COALESCE(SUM(CASE WHEN drinks = 0 THEN 1 ELSE 0 END), 0) as sober_days
+			COALESCE(SUM(CASE WHEN drinks > 0 THEN 1 ELSE 0 END), 0) as drinking_days
 		FROM logs
 		WHERE user_id = ?
-	`, weekStart, monthStart, userID).Scan(&totalWeek, &totalMonth, &totalAll, &drinkingDays, &soberDays)
+	`, weekStart, monthStart, userID).Scan(&totalWeek, &totalMonth, &totalAll, &drinkingDays)
 	if err != nil {
 		return nil, err
 	}
 
-	totalDays := drinkingDays + soberDays
 	var avgDrinking float64
 	if drinkingDays > 0 {
 		avgDrinking = float64(totalAll) / float64(drinkingDays)
 		avgDrinking = math.Round(avgDrinking*10) / 10
-	}
-	var pctSober float64
-	if totalDays > 0 {
-		pctSober = float64(soberDays) / float64(totalDays) * 100
-		pctSober = math.Round(pctSober*10) / 10
 	}
 
 	// Streaks: fetch all log dates ordered by date desc to calculate current streak
@@ -303,6 +295,20 @@ func (d *DB) GetStats(userID string) (*models.Stats, error) {
 	}
 
 	currentStreak, longestStreak := calculateStreaks(records, today)
+
+	// pct_sober_days: treat all calendar days from first log to today as tracked.
+	// Unlogged days count as sober, consistent with streak logic.
+	var pctSober float64
+	if len(records) > 0 {
+		earliest := parseDate(records[len(records)-1].date)
+		todayDate := parseDate(today)
+		totalCalendarDays := int(todayDate.Sub(earliest).Hours()/24) + 1
+		soberDays := totalCalendarDays - drinkingDays
+		if soberDays < 0 {
+			soberDays = 0
+		}
+		pctSober = math.Round(float64(soberDays)/float64(totalCalendarDays)*100*10) / 10
+	}
 
 	// Weekly totals for last 12 weeks
 	weeklyTotals, err := d.getWeeklyTotals(userID, now)
@@ -357,40 +363,20 @@ func calculateStreaks(records []dayRecord, today string) (current, longest int) 
 		}
 	}
 
-	// Longest sober streak: sort all records by date asc
-	sorted := make([]dayRecord, 0, len(drinkMap))
-	for date, drinks := range drinkMap {
-		sorted = append(sorted, dayRecord{date, drinks})
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].date < sorted[j].date
-	})
-
+	// Longest sober streak: walk every calendar day from earliest log to today,
+	// treating unlogged days as sober (same philosophy as current streak above).
 	longest = 0
 	cur := 0
-	prev := ""
-	for _, r := range sorted {
-		if r.drinks == 0 {
-			if prev != "" {
-				// Check consecutive
-				prevDate := parseDate(prev)
-				curDate := parseDate(r.date)
-				diff := int(curDate.Sub(prevDate).Hours() / 24)
-				if diff == 1 {
-					cur++
-				} else {
-					cur = 1
-				}
-			} else {
-				cur = 1
-			}
+	earliest := parseDate(earliestDate)
+	todayDate := parseDate(today)
+	for t := earliest; !t.After(todayDate); t = t.AddDate(0, 0, 1) {
+		if drinkMap[t.Format("2006-01-02")] == 0 {
+			cur++
 			if cur > longest {
 				longest = cur
 			}
-			prev = r.date
 		} else {
 			cur = 0
-			prev = ""
 		}
 	}
 
