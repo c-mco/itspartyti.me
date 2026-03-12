@@ -2,236 +2,120 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>itspartyti.me</title>
   <link rel="stylesheet" href="/style.css" />
-  <noscript><style>.app{display:none}.noscript{display:block!important}</style></noscript>
 </head>
 <body>
 
-  <div class="noscript" style="display:none">
-    <h1>JavaScript required</h1>
-    <p>itspartyti.me needs JavaScript. Enable it in your browser to continue.</p>
+  <!-- AUTH -->
+  <div id="auth" hidden>
+    <div class="auth-box">
+      <div class="auth-brand">
+        <h1>itspartyti.me</h1>
+        <p>your drinks, honestly</p>
+      </div>
+      <form id="auth-form" novalidate>
+        <div class="field">
+          <label for="f-user">username</label>
+          <input id="f-user" type="text" autocomplete="username" required spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="f-pass">password</label>
+          <input id="f-pass" type="password" autocomplete="current-password" required />
+        </div>
+        <div id="auth-err" class="form-err" role="alert" aria-live="polite"></div>
+        <button type="submit" id="auth-submit" class="btn-primary">log in</button>
+      </form>
+      <button id="auth-toggle" class="auth-switch-btn">don't have an account? register →</button>
+    </div>
   </div>
 
-  <div class="app" id="app">
+  <!-- APP -->
+  <div id="app" hidden>
 
-    <!-- ═══════════════════════════════════════════
-         AUTH SCREEN
-         ═══════════════════════════════════════════ -->
-    <div id="auth-screen" hidden>
-      <div class="auth-wrap">
-        <h1 class="brand">itspartyti.me</h1>
-        <p class="brand-sub">your drinks, honestly</p>
-
-        <div class="auth-tabs" role="tablist">
-          <button class="auth-tab active" role="tab" aria-selected="true"
-                  data-tab="login" aria-controls="panel-login">login</button>
-          <button class="auth-tab" role="tab" aria-selected="false"
-                  data-tab="register" aria-controls="panel-register">register</button>
-        </div>
-
-        <div id="panel-login" role="tabpanel">
-          <form id="form-login" novalidate>
-            <div class="field">
-              <label for="login-user">username</label>
-              <input id="login-user" type="text" autocomplete="username" required />
-            </div>
-            <div class="field">
-              <label for="login-pass">password</label>
-              <input id="login-pass" type="password" autocomplete="current-password" required />
-            </div>
-            <div id="err-login" class="form-err" role="alert" aria-live="polite"></div>
-            <button type="submit" class="btn-primary w-full">log in</button>
-          </form>
-        </div>
-
-        <div id="panel-register" role="tabpanel" hidden>
-          <form id="form-register" novalidate>
-            <div class="field">
-              <label for="reg-user">username
-                <span class="hint">3–32 chars · letters, digits, _ -</span>
-              </label>
-              <input id="reg-user" type="text" autocomplete="username"
-                     required minlength="3" maxlength="32" />
-            </div>
-            <div class="field">
-              <label for="reg-pass">password
-                <span class="hint">min 8 characters</span>
-              </label>
-              <input id="reg-pass" type="password" autocomplete="new-password"
-                     required minlength="8" />
-            </div>
-            <div id="err-register" class="form-err" role="alert" aria-live="polite"></div>
-            <button type="submit" class="btn-primary w-full">create account</button>
-          </form>
-        </div>
+    <header class="hdr">
+      <span class="hdr-brand">itspartyti.me</span>
+      <div class="hdr-end">
+        <span id="hdr-user" class="hdr-user"></span>
+        <button id="btn-logout" class="btn-ghost sm">logout</button>
       </div>
+    </header>
+
+    <nav class="viewnav" role="tablist" aria-label="View">
+      <button class="vtab is-active" role="tab" aria-selected="true"  data-view="graph">graph</button>
+      <button class="vtab"           role="tab" aria-selected="false" data-view="month">month</button>
+      <button class="vtab"           role="tab" aria-selected="false" data-view="river">river</button>
+    </nav>
+
+    <main class="panels">
+
+      <!-- GRAPH PANEL -->
+      <section id="panel-graph" class="panel">
+        <div id="graph-ctrl" class="panel-ctrl"></div>
+        <div id="graph-mount"></div>
+        <div class="legend">
+          <span class="leg sober"></span>
+          <span class="leg light"></span>
+          <span class="leg moderate"></span>
+          <span class="leg heavy"></span>
+          <span class="leg none"></span>
+          <span class="leg-txt">0 · 1–2 · 3–4 · 5+ · —</span>
+        </div>
+      </section>
+
+      <!-- MONTH PANEL -->
+      <section id="panel-month" class="panel" hidden>
+        <div class="panel-ctrl">
+          <button class="btn-ghost sm" id="btn-mo-prev" aria-label="Previous month">←</button>
+          <span class="panel-title" id="mo-label"></span>
+          <button class="btn-ghost sm" id="btn-mo-next" aria-label="Next month">→</button>
+        </div>
+        <div id="mo-grid" class="mo-grid" role="grid" aria-label="Monthly calendar"></div>
+      </section>
+
+      <!-- RIVER PANEL -->
+      <section id="panel-river" class="panel" hidden>
+        <div class="river-outer">
+          <div class="river-y" id="river-y"></div>
+          <div class="river-scroll" id="river-scroll" tabindex="0" aria-label="Drink timeline">
+            <div class="river-bars" id="river-bars"></div>
+            <div class="river-months" id="river-months"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- STATS -->
+    <div class="stats-row" aria-label="Stats">
+      <div class="stat"><span class="stat-n" id="s-week">—</span><span class="stat-l">week</span></div>
+      <div class="stat"><span class="stat-n" id="s-month">—</span><span class="stat-l">month</span></div>
+      <div class="stat"><span class="stat-n" id="s-all">—</span><span class="stat-l">all time</span></div>
+      <div class="stat"><span class="stat-n" id="s-streak">—</span><span class="stat-l">streak · best <span id="s-best">—</span></span></div>
+      <div class="stat"><span class="stat-n" id="s-avg">—</span><span class="stat-l">avg/day</span></div>
+      <div class="stat"><span class="stat-n" id="s-sober">—</span><span class="stat-l">sober %</span></div>
     </div>
 
-    <!-- ═══════════════════════════════════════════
-         MAIN APP
-         ═══════════════════════════════════════════ -->
-    <div id="main-screen" hidden>
-
-      <header class="header">
-        <span class="header-brand">itspartyti.me</span>
-        <div class="header-right">
-          <span id="header-username" class="header-user"></span>
-          <button id="btn-logout" class="btn-ghost">logout</button>
-        </div>
-      </header>
-
-      <!-- View selector tabs -->
-      <nav class="view-nav" role="tablist" aria-label="View">
-        <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Graph</button>
-        <button class="view-tab"        role="tab" aria-selected="false" data-view="river">River</button>
-        <button class="view-tab"        role="tab" aria-selected="false" data-view="month">Month</button>
-      </nav>
-
-      <!-- ─── VIEW PANELS ─────────────────────────────── -->
-      <main class="view-area">
-
-        <!-- COMMIT GRAPH -->
-        <section id="panel-year" class="view-panel" aria-label="Commit graph">
-          <div class="panel-controls" id="cg-controls">
-            <!-- populated by JS: empty in overview, ← overview button in scroll mode -->
-          </div>
-          <div id="cg-mount"></div>
-          <div class="legend" aria-label="Colour scale">
-            <span class="leg-swatch sober"    title="0 drinks"   ></span>
-            <span class="leg-swatch light"    title="1–2 drinks" ></span>
-            <span class="leg-swatch moderate" title="3–4 drinks" ></span>
-            <span class="leg-swatch heavy"    title="5+ drinks"  ></span>
-            <span class="leg-swatch none"     title="not logged" ></span>
-            <span class="leg-text">0 · 1–2 · 3–4 · 5+ · —</span>
-          </div>
-        </section>
-
-        <!-- TIMELINE RIVER -->
-        <section id="panel-river" class="view-panel" aria-label="Timeline river" hidden>
-          <div class="river-outer">
-            <!-- Y axis: stays fixed while bars scroll -->
-            <div class="river-y-axis" id="river-y" aria-hidden="true"></div>
-            <!-- Scrollable chart area -->
-            <div class="river-scroll" id="river-scroll"
-                 tabindex="0" aria-label="Scrollable year timeline. Each bar is one day.">
-              <div id="river-bars"  class="river-bars"  role="img" aria-label="Daily drink bars"></div>
-              <div id="river-months" class="river-months" aria-hidden="true"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- MONTH GRID -->
-        <section id="panel-month" class="view-panel" aria-label="Month calendar" hidden>
-          <div class="panel-controls">
-            <button id="btn-month-prev" class="icon-btn" aria-label="Previous month">←</button>
-            <span   id="month-label"   class="panel-title"></span>
-            <button id="btn-month-next" class="icon-btn" aria-label="Next month">→</button>
-          </div>
-          <div id="month-grid" class="month-grid" role="grid" aria-label="Monthly drink calendar">
-            <!-- 7 header cells, always present -->
-            <div class="mcell-hdr" aria-hidden="true">Mon</div>
-            <div class="mcell-hdr" aria-hidden="true">Tue</div>
-            <div class="mcell-hdr" aria-hidden="true">Wed</div>
-            <div class="mcell-hdr" aria-hidden="true">Thu</div>
-            <div class="mcell-hdr" aria-hidden="true">Fri</div>
-            <div class="mcell-hdr" aria-hidden="true">Sat</div>
-            <div class="mcell-hdr" aria-hidden="true">Sun</div>
-            <!-- day cells injected by JS -->
-          </div>
-        </section>
-
-      </main>
-
-      <!-- ─── STATS STRIP ──────────────────────────────── -->
-      <div class="stats-strip" aria-label="Statistics">
-        <div class="sstat">
-          <span class="sstat-n" id="st-week">—</span>
-          <span class="sstat-l">this week</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-month">—</span>
-          <span class="sstat-l">this month</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-all">—</span>
-          <span class="sstat-l">all time</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-streak">—</span>
-          <span class="sstat-l">streak · best <span id="st-best">—</span></span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-avg">—</span>
-          <span class="sstat-l">avg / drinking day</span>
-        </div>
-        <div class="sstat">
-          <span class="sstat-n" id="st-sober">—</span>
-          <span class="sstat-l">sober days</span>
-        </div>
+    <!-- ACCOUNT -->
+    <details class="acct">
+      <summary>account</summary>
+      <div class="acct-body">
+        <p>Permanently delete your account and all data. This cannot be undone.</p>
+        <button class="btn-danger" id="btn-del-acct">delete account</button>
       </div>
+    </details>
 
-      <!-- ─── ACCOUNT ──────────────────────────────────── -->
-      <details class="account-det">
-        <summary class="account-summary">account</summary>
-        <div class="account-body">
-          <p>Permanently delete your account and all logs. Cannot be undone.</p>
-          <button id="btn-delete-account" class="btn-danger">delete account</button>
-        </div>
-      </details>
+    <!-- QUICK ADD -->
+    <button class="qadd-btn" id="btn-qa" aria-label="Add one drink to today">+1</button>
 
-      <!-- ─── QUICK-ADD ──────────────────────────────────────── -->
-      <button id="btn-quickadd" class="quickadd-btn" type="button" aria-label="Add one drink">+1</button>
+    <!-- TOAST -->
+    <div class="toast" id="toast" hidden role="status" aria-live="polite">
+      <span id="toast-msg" class="toast-msg"></span>
+      <button class="toast-undo" id="toast-undo" type="button">undo</button>
+    </div>
 
-      <div id="quickadd-toast" class="quickadd-toast" role="status" aria-live="polite" hidden>
-        <span id="quickadd-toast-msg" class="quickadd-toast-msg"></span>
-        <button id="btn-quickadd-undo" class="quickadd-undo-btn" type="button">undo</button>
-      </div>
-
-    </div><!-- /main-screen -->
   </div><!-- /app -->
-
-  <!-- ═══════════════════════════════════════════
-       LOG MODAL
-       ═══════════════════════════════════════════ -->
-  <div id="modal" class="modal-overlay" hidden
-       role="dialog" aria-modal="true" aria-labelledby="modal-heading">
-    <div class="modal-box">
-      <div class="modal-top">
-        <div>
-          <p id="modal-date" class="modal-date-str"></p>
-          <h2 id="modal-heading" class="modal-heading">Log drinks</h2>
-        </div>
-        <button id="btn-modal-close" class="icon-btn" aria-label="Close modal">✕</button>
-      </div>
-
-      <div class="drink-stepper" role="group" aria-label="Drink count">
-        <button id="btn-dec" class="stepper-btn" type="button" aria-label="Fewer">−</button>
-        <input  id="input-drinks" type="number" min="0" max="100" value="0"
-                aria-label="Number of drinks" />
-        <button id="btn-inc" class="stepper-btn" type="button" aria-label="More">+</button>
-      </div>
-
-      <div class="field">
-        <label for="input-note">note
-          <span class="hint">optional · max 500 chars</span>
-        </label>
-        <textarea id="input-note" rows="2" maxlength="500"
-                  placeholder="what were you drinking?"></textarea>
-      </div>
-
-      <div id="modal-err" class="form-err" role="alert" aria-live="polite"></div>
-
-      <div class="modal-actions">
-        <button id="btn-modal-delete" class="btn-ghost" type="button" hidden>delete</button>
-        <div class="modal-actions-r">
-          <button id="btn-modal-cancel" class="btn-ghost" type="button">cancel</button>
-          <button id="btn-modal-save"   class="btn-primary" type="button">save</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <script src="/app.js"></script>
 </body>

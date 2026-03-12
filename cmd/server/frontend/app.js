@@ -1,50 +1,35 @@
 'use strict';
 
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════
    CONSTANTS
-   ═══════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════ */
 
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun',
-                      'Jul','Aug','Sep','Oct','Nov','Dec'];
-const MONTHS_ABBR  = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                'Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOWS   = ['S','M','T','W','T','F','S'];
 
-// River view: each day = BAR_W + BAR_GAP pixels wide
-const BAR_W    = 5;
-const BAR_GAP  = 1;
-const BAR_STEP = BAR_W + BAR_GAP;  // 6px per day
-const RIVER_MAX_H = 100;           // max bar height in px
+// Graph: base cell size and fisheye scale curve
+const CG_BASE   = 24;
+const CG_GAP    = 3;
+const CG_STEP   = CG_BASE + CG_GAP; // 27px per column at natural size
+const CG_SCALES = [3.2, 2.1, 1.4, 1.05, 0.82, 0.76]; // scale by column distance
 
-/* ═══════════════════════════════════════════════════════════════
+// River view
+const R_W = 5, R_GAP = 1, R_STEP = R_W + R_GAP, R_H = 100;
+
+/* ═══════════════════════════════════════════════════════
    HELPERS
-   ═══════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════ */
 
-/** Zero-pad a number to 2 digits. */
-const pad = n => String(n).padStart(2, '0');
+const pad    = n  => String(n).padStart(2, '0');
+const $id    = id => document.getElementById(id);
+const fmtD   = d  => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today  = () => fmtD(new Date());
+const parseD = s  => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const isFut  = s  => s > today();
+const daysIn = (y, m) => new Date(y, m, 0).getDate();
 
-/** Format a Date object as YYYY-MM-DD using local time. */
-function fmtDate(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** Today's date as a YYYY-MM-DD string. */
-function todayStr() { return fmtDate(new Date()); }
-
-/** Parse a YYYY-MM-DD string as a local-timezone Date (avoids UTC offset issues). */
-function parseDate(s) {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-/** Number of days in a given month. m = 1–12. */
-function daysInMonth(year, month) {
-  return new Date(year, month, 0).getDate();
-}
-
-/** Is a YYYY-MM-DD date string strictly in the future? */
-function isFuture(dateStr) { return dateStr > todayStr(); }
-
-/** CSS colour-class for a drink count (null = not logged). */
-function drinkClass(n) {
+function drinkCls(n) {
   if (n == null) return 'none';
   if (n === 0)   return 'sober';
   if (n <= 2)    return 'light';
@@ -52,48 +37,34 @@ function drinkClass(n) {
   return 'heavy';
 }
 
-/** Escape HTML special characters for safe innerHTML insertion. */
-function esc(s) {
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-/** getElementById shorthand. */
-const $id = id => document.getElementById(id);
-
-/**
- * Create a DOM element with attributes and optional text content.
- * Skips attributes whose value is undefined, null, or empty string.
- */
 function el(tag, attrs = {}, text) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (v !== undefined && v !== null && v !== '') e.setAttribute(k, String(v));
+    if (v != null && v !== '') e.setAttribute(k, String(v));
   }
   if (text != null) e.textContent = text;
   return e;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   API LAYER
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   API
+   ═══════════════════════════════════════════════════════ */
 
-class APIError extends Error {
+class ApiError extends Error {
   constructor(status, msg) { super(msg); this.status = status; }
 }
 
 const api = {
   async req(method, path, body) {
-    const init = {
+    const opts = {
       method,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     };
-    if (body != null) init.body = JSON.stringify(body);
-    const res  = await fetch(path, init);
+    if (body != null) opts.body = JSON.stringify(body);
+    const res  = await fetch(path, opts);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new APIError(res.status, data.error || 'Request failed');
+    if (!res.ok) throw new ApiError(res.status, data.error || 'request failed');
     return data;
   },
   get:  p     => api.req('GET',    p),
@@ -101,158 +72,29 @@ const api = {
   del:  p     => api.req('DELETE', p),
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   APPLICATION STATE
-   All views read from this shared object — data is loaded once
-   on login and mutated in-place after saves/deletes.
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════ */
 
 const S = {
-  user:      null,           // logged-in username string
-  logs:      [],             // array of log objects from API
-  stats:     null,           // stats object from API
-  map:       new Map(),      // date string → log object  (derived)
-  view:      'year',         // active view: 'year' | 'river' | 'month'
-  yearView:  new Date().getFullYear(),   // year shown in Year view (kept for month nav compat)
-  monthView: new Date().getMonth(),      // month shown in Month view (0-indexed)
-  modal:     { date: null },
-  graphMode:         'overview', // 'overview' | 'scroll'
-  graphScrollTarget: null,       // dateStr to center on after mode switch
+  user:        null,
+  logs:        [],
+  stats:       null,
+  map:         new Map(),   // date → log (fast lookup)
+  view:        'graph',
+  graphMode:   'overview',  // 'overview' | 'scroll'
+  graphTarget: null,        // dateStr to center on / open after mode switch
+  moYear:      new Date().getFullYear(),
+  moMonth:     new Date().getMonth(),
 };
 
-/** Rebuild the fast-lookup map from S.logs. Call after every mutation. */
 function rebuildMap() {
   S.map = new Map(S.logs.map(l => [l.date, l]));
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   AUTH SCREEN
-   ═══════════════════════════════════════════════════════════════ */
-
-function showAuth() {
-  $id('main-screen').hidden = true;
-  $id('auth-screen').hidden = false;
-}
-
-function showMain() {
-  $id('auth-screen').hidden = true;
-  $id('main-screen').hidden = false;
-  $id('header-username').textContent = S.user;
-  loadAllData();
-}
-
-async function checkAuth() {
-  try {
-    const d = await api.get('/api/me');
-    S.user = d.username;
-    showMain();
-  } catch {
-    showAuth();
-  }
-}
-
-function initAuthForms() {
-  // Tab switching
-  $id('auth-screen').querySelectorAll('.auth-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      $id('auth-screen').querySelectorAll('.auth-tab').forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-      });
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected', 'true');
-      const tab = btn.dataset.tab;
-      $id('panel-login').hidden    = tab !== 'login';
-      $id('panel-register').hidden = tab !== 'register';
-    });
-  });
-
-  // Login
-  $id('form-login').addEventListener('submit', async e => {
-    e.preventDefault();
-    const submit = e.target.querySelector('[type=submit]');
-    const errEl  = $id('err-login');
-    errEl.textContent = '';
-    submit.disabled   = true;
-    try {
-      const d = await api.post('/api/login', {
-        username: $id('login-user').value.trim(),
-        password: $id('login-pass').value,
-      });
-      S.user = d.username;
-      showMain();
-    } catch (err) {
-      errEl.textContent = err.message;
-    } finally {
-      submit.disabled = false;
-    }
-  });
-
-  // Register → auto-login
-  $id('form-register').addEventListener('submit', async e => {
-    e.preventDefault();
-    const submit = e.target.querySelector('[type=submit]');
-    const errEl  = $id('err-register');
-    errEl.textContent = '';
-    submit.disabled   = true;
-    try {
-      const username = $id('reg-user').value.trim();
-      const password = $id('reg-pass').value;
-      await api.post('/api/register', { username, password });
-      const d = await api.post('/api/login', { username, password });
-      S.user = d.username;
-      showMain();
-    } catch (err) {
-      errEl.textContent = err.message;
-    } finally {
-      submit.disabled = false;
-    }
-  });
-}
-
-function initLogout() {
-  $id('btn-logout').addEventListener('click', async () => {
-    try { await api.post('/api/logout'); } catch { /* ignore */ }
-    S.user = null; S.logs = []; S.stats = null; S.map.clear();
-    showAuth();
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   DATA LOADING
-   Load logs + stats once on login. All views use S.map.
-   ═══════════════════════════════════════════════════════════════ */
-
-async function loadAllData() {
-  try {
-    const [logs, stats] = await Promise.all([
-      api.get('/api/logs'),
-      api.get('/api/stats'),
-    ]);
-    S.logs  = logs  || [];
-    S.stats = stats;
-    rebuildMap();
-    renderCurrentView();
-    renderStats();
-  } catch (e) {
-    console.error('loadAllData:', e);
-  }
-}
-
-/** Refresh only the stats strip (after a save or delete). */
-async function refreshStats() {
-  try {
-    S.stats = await api.get('/api/stats');
-    renderStats();
-  } catch { /* ignore */ }
-}
-
-/* ── In-memory log mutations (no re-fetch needed) ── */
-
 function applyLogSave(log) {
   const i = S.logs.findIndex(l => l.date === log.date);
-  if (i >= 0) S.logs[i] = log;
-  else        S.logs.push(log);
+  if (i >= 0) S.logs[i] = log; else S.logs.push(log);
   rebuildMap();
 }
 
@@ -261,452 +103,395 @@ function applyLogDelete(date) {
   rebuildMap();
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   LOG MODAL  (shared by all three views)
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   AUTH
+   ═══════════════════════════════════════════════════════ */
 
-let _saving = false;
+let _authMode = 'login';
 
-function openModal(dateStr) {
-  if (isFuture(dateStr)) return;
-  S.modal.date = dateStr;
-
-  const log = S.map.get(dateStr);
-  $id('modal-date').textContent =
-    parseDate(dateStr).toLocaleDateString(undefined, {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    });
-  $id('input-drinks').value     = log ? log.drinks : 0;
-  $id('input-note').value       = log ? (log.note  || '') : '';
-  $id('modal-err').textContent  = '';
-  $id('btn-modal-delete').hidden = !log;
-
-  $id('modal').hidden = false;
-  $id('input-drinks').focus();
+function showAuth() {
+  $id('app').hidden  = true;
+  $id('auth').hidden = false;
+  $id('auth-err').textContent = '';
 }
 
-function closeModal() {
-  $id('modal').hidden = true;
-  S.modal.date = null;
+function showApp() {
+  $id('auth').hidden = true;
+  $id('app').hidden  = false;
+  $id('hdr-user').textContent = S.user;
+  loadAll();
 }
 
-function initModal() {
-  $id('btn-modal-close').addEventListener('click',  closeModal);
-  $id('btn-modal-cancel').addEventListener('click', closeModal);
+async function checkAuth() {
+  try {
+    const d = await api.get('/api/me');
+    S.user = d.username;
+    showApp();
+  } catch { showAuth(); }
+}
 
-  $id('modal').addEventListener('click', e => {
-    if (e.target === $id('modal')) closeModal();
+function initAuth() {
+  const form   = $id('auth-form');
+  const toggle = $id('auth-toggle');
+  const submit = $id('auth-submit');
+  const errEl  = $id('auth-err');
+
+  toggle.addEventListener('click', () => {
+    _authMode = _authMode === 'login' ? 'register' : 'login';
+    const isLogin = _authMode === 'login';
+    submit.textContent = isLogin ? 'log in' : 'create account';
+    toggle.textContent = isLogin ? "don't have an account? register →" : 'already have an account? log in →';
+    errEl.textContent  = '';
+    $id('f-user').value = '';
+    $id('f-pass').value = '';
+    $id('f-user').focus();
   });
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !$id('modal').hidden) closeModal();
-  });
-
-  // Drink count stepper
-  $id('btn-dec').addEventListener('click', () => {
-    const v = parseInt($id('input-drinks').value, 10) || 0;
-    $id('input-drinks').value = Math.max(0, v - 1);
-  });
-  $id('btn-inc').addEventListener('click', () => {
-    const v = parseInt($id('input-drinks').value, 10) || 0;
-    $id('input-drinks').value = Math.min(100, v + 1);
-  });
-
-  // Save — debounced with _saving flag
-  $id('btn-modal-save').addEventListener('click', async () => {
-    if (_saving) return;
-    const drinks = parseInt($id('input-drinks').value, 10);
-    if (isNaN(drinks) || drinks < 0 || drinks > 100) {
-      $id('modal-err').textContent = 'Enter a number from 0 to 100.';
-      return;
-    }
-    _saving = true;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    errEl.textContent = '';
+    submit.disabled   = true;
+    const username = $id('f-user').value.trim();
+    const password = $id('f-pass').value;
     try {
-      const saved = await api.post('/api/logs', {
-        date:   S.modal.date,
-        drinks,
-        note:   $id('input-note').value.trim(),
-      });
-      applyLogSave(saved); // update S.map immediately
-      closeModal();
-      renderCurrentView(); // re-render from updated map — no reload
-      refreshStats();
+      if (_authMode === 'register') {
+        await api.post('/api/register', { username, password });
+      }
+      const d = await api.post('/api/login', { username, password });
+      S.user = d.username;
+      showApp();
     } catch (err) {
-      $id('modal-err').textContent = err.message;
+      errEl.textContent = err.message;
     } finally {
-      _saving = false;
+      submit.disabled = false;
     }
   });
 
-  // Delete entry
-  $id('btn-modal-delete').addEventListener('click', async () => {
-    if (!confirm('Delete this entry?')) return;
-    try {
-      await api.del(`/api/logs/${S.modal.date}`);
-      applyLogDelete(S.modal.date);
-      closeModal();
-      renderCurrentView();
-      refreshStats();
-    } catch (err) {
-      $id('modal-err').textContent = err.message;
-    }
+  $id('btn-logout').addEventListener('click', async () => {
+    try { await api.post('/api/logout'); } catch { /* ignore */ }
+    S.user = null; S.logs = []; S.stats = null; S.map.clear();
+    showAuth();
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STATS STRIP
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   DATA
+   ═══════════════════════════════════════════════════════ */
+
+async function loadAll() {
+  try {
+    const [logs, stats] = await Promise.all([api.get('/api/logs'), api.get('/api/stats')]);
+    S.logs  = logs  || [];
+    S.stats = stats;
+    rebuildMap();
+    renderView();
+    renderStats();
+  } catch (e) { console.error('loadAll:', e); }
+}
+
+async function refreshStats() {
+  try { S.stats = await api.get('/api/stats'); renderStats(); } catch { /* ignore */ }
+}
+
+/* ═══════════════════════════════════════════════════════
+   VIEW ROUTING
+   ═══════════════════════════════════════════════════════ */
+
+function switchView(name) {
+  if (S.view === name) return;
+  if (S.view === 'graph') { FisheyeEngine.destroy(); Editor.close(false); }
+  S.view = name;
+  document.querySelectorAll('.vtab').forEach(b => {
+    const on = b.dataset.view === name;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  ['graph','month','river'].forEach(v => { $id(`panel-${v}`).hidden = v !== name; });
+  renderView();
+}
+
+function renderView() {
+  switch (S.view) {
+    case 'graph': renderGraph(); break;
+    case 'month': renderMonth(); break;
+    case 'river': renderRiver(); break;
+  }
+}
+
+function initViewNav() {
+  document.querySelectorAll('.vtab').forEach(b => {
+    b.addEventListener('click', () => switchView(b.dataset.view));
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   STATS
+   ═══════════════════════════════════════════════════════ */
 
 function renderStats() {
   const s = S.stats;
   if (!s) return;
-  $id('st-week').textContent   = s.total_this_week;
-  $id('st-month').textContent  = s.total_this_month;
-  $id('st-all').textContent    = s.total_all_time;
-  $id('st-streak').textContent = s.current_streak  + 'd';
-  $id('st-best').textContent   = s.longest_streak  + 'd';
-  $id('st-avg').textContent    = s.avg_drinking_days || '—';
-  $id('st-sober').textContent  = s.pct_sober_days  + '%';
+  $id('s-week').textContent   = s.total_this_week;
+  $id('s-month').textContent  = s.total_this_month;
+  $id('s-all').textContent    = s.total_all_time;
+  $id('s-streak').textContent = s.current_streak  + 'd';
+  $id('s-best').textContent   = s.longest_streak  + 'd';
+  $id('s-avg').textContent    = s.avg_drinking_days || '—';
+  $id('s-sober').textContent  = s.pct_sober_days  + '%';
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   VIEW ROUTING
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   COMMIT GRAPH — data
+   ═══════════════════════════════════════════════════════ */
 
-function switchView(name) {
-  if (S.view === name) return;
-  if (S.view === 'year') { FisheyeEngine.destroy(); CellEditor.close(true); }
-  S.view = name;
-  document.querySelectorAll('.view-tab').forEach(btn => {
-    const active = btn.dataset.view === name;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  ['year', 'river', 'month'].forEach(v => {
-    $id(`panel-${v}`).hidden = v !== name;
-  });
-  renderCurrentView();
-}
+/** Build 52 week-columns (Sun-start). col[0] = oldest, col[51] = week containing today. */
+function buildWeekCols() {
+  const t  = new Date();
+  const ts = today();
+  const ws = new Date(t);
+  ws.setDate(t.getDate() - t.getDay()); // Sunday of current week
+  const gs = new Date(ws);
+  gs.setDate(ws.getDate() - 51 * 7);   // 52 weeks back
 
-function renderCurrentView() {
-  switch (S.view) {
-    case 'year':  renderCommitGraph(); break;
-    case 'river': renderRiver();       break;
-    case 'month': renderMonthGrid();   break;
-  }
-}
-
-function initViewTabs() {
-  document.querySelectorAll('.view-tab').forEach(btn => {
-    btn.addEventListener('click', () => switchView(btn.dataset.view));
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   VIEW: COMMIT GRAPH
-   GitHub-style 7-row × 52-column rolling heatmap.
-   Two modes:
-     overview – all 52 weeks fit the container; click to drill in
-     scroll   – pannable, larger cells, fisheye zoom on hover/touch
-   ═══════════════════════════════════════════════════════════════ */
-
-const CG_BASE  = 28;                          // natural cell size (px) in scroll mode
-const CG_GAP   = 3;                           // gap between cells (px)
-const CG_STEP  = CG_BASE + CG_GAP;           // 31px per column at natural size
-// Fisheye scale by column distance (index = distance 0, 1, 2 … )
-const CG_SCALES = [2.8, 2.0, 1.4, 1.05, 0.85, 0.8];
-const CG_DOW   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-/** Compute 52 week-columns of {dateStr, log, isFuture, isToday} entries.
- *  Week 0 = oldest, week 51 = the week containing today (Sun-start). */
-function buildWeekColumns() {
-  const t    = new Date();
-  const ts   = todayStr();
-  // Sunday of the current week
-  const ws   = new Date(t);
-  ws.setDate(t.getDate() - t.getDay());
-  // Start of the 52-week window
-  const gs   = new Date(ws);
-  gs.setDate(ws.getDate() - 51 * 7);
-
-  const cols = [];
-  for (let w = 0; w < 52; w++) {
-    const week = [];
-    for (let d = 0; d < 7; d++) {
-      const dt  = new Date(gs);
+  return Array.from({ length: 52 }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => {
+      const dt = new Date(gs);
       dt.setDate(gs.getDate() + w * 7 + d);
-      const ds  = fmtDate(dt);
-      const log = S.map.get(ds) ?? null;
-      week.push({ dateStr: ds, log, isFuture: ds > ts, isToday: ds === ts });
-    }
-    cols.push(week);
-  }
-  return cols;
+      const ds = fmtD(dt);
+      return { ds, log: S.map.get(ds) ?? null, fut: ds > ts, tod: ds === ts };
+    })
+  );
 }
 
-/** Returns array of 52 month-abbreviation strings (non-empty only where month changes). */
+/** Month label per column — only non-empty where month changes. */
 function buildMonthLabels(cols) {
-  const out = new Array(52).fill('');
-  let last  = -1;
-  for (let w = 0; w < 52; w++) {
-    const m = parseInt(cols[w][0].dateStr.split('-')[1], 10) - 1;
-    if (m !== last) { out[w] = MONTHS_SHORT[m]; last = m; }
-  }
-  return out;
+  let last = -1;
+  return cols.map(week => {
+    const m = parseInt(week[0].ds.split('-')[1], 10) - 1;
+    if (m !== last) { last = m; return MONTHS[m]; }
+    return '';
+  });
 }
 
-/** Create a single .cg-cell element. mode = 'overview' | 'scroll'. */
-function makeCgCell(entry, mode) {
-  const { dateStr, log, isFuture, isToday } = entry;
-  const dc  = drinkClass(log != null ? log.drinks : null);
-  const cls = ['cg-cell', dc,
-    isFuture ? 'future' : '',
-    isToday  ? 'is-today' : '',
-  ].filter(Boolean).join(' ');
+/** Create a single .gc element. */
+function makeCell(entry, mode) {
+  const { ds, log, fut, tod } = entry;
+  const dc  = drinkCls(log != null ? log.drinks : null);
+  const cls = ['gc', dc, fut ? 'future' : '', tod ? 'today' : ''].filter(Boolean).join(' ');
+  const c   = el('div', { class: cls, 'data-date': ds });
 
-  const cell = el('div', { class: cls, 'data-date': dateStr });
-
-  if (!isFuture) {
-    cell.setAttribute('tabindex', '0');
-    const drinks = log != null ? log.drinks : null;
-    const dText  = drinks == null ? 'not logged'
-      : drinks === 0 ? 'sober'
-      : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
-    cell.setAttribute('aria-label', `${dateStr}: ${dText}`);
+  if (!fut) {
+    c.setAttribute('tabindex', '0');
+    const lbl = log == null ? 'not logged'
+      : log.drinks === 0   ? 'sober'
+      : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
+    c.setAttribute('aria-label', `${ds}: ${lbl}`);
   }
 
   if (mode === 'scroll') {
-    const inner = el('div', { class: 'cg-cell-inner' });
-    inner.appendChild(el('span', { class: 'cg-cell-day' },
-      String(parseDate(dateStr).getDate())));
+    const inn = el('div', { class: 'gc-inner' });
+    inn.appendChild(el('span', { class: 'gc-day'   }, String(parseD(ds).getDate())));
     if (log != null) {
-      inner.appendChild(el('span', { class: 'cg-cell-count' }, String(log.drinks)));
+      inn.appendChild(el('span', { class: 'gc-count' }, String(log.drinks)));
       if (log.note) {
-        const note = el('span', { class: 'cg-cell-note' });
-        note.textContent = log.note.length > 36 ? log.note.slice(0, 36) + '…' : log.note;
-        inner.appendChild(note);
+        const ne = el('span', { class: 'gc-note' });
+        ne.textContent = log.note.length > 28 ? log.note.slice(0, 28) + '…' : log.note;
+        inn.appendChild(ne);
       }
     }
-    cell.appendChild(inner);
+    c.appendChild(inn);
   }
-
-  return cell;
+  return c;
 }
 
-/** Update just the affected cell(s) in the DOM without a full re-render.
- *  Called after inline saves to avoid destroying the fisheye engine. */
-function updateCgCell(dateStr) {
-  const log    = S.map.get(dateStr) ?? null;
-  const dc     = drinkClass(log != null ? log.drinks : null);
-  const drinks = log != null ? log.drinks : null;
-  const dText  = drinks == null ? 'not logged'
-    : drinks === 0 ? 'sober'
-    : `${drinks} drink${drinks !== 1 ? 's' : ''}`;
+/** Update a single cell's appearance in-place after a save. Avoids full re-render. */
+function patchCell(ds) {
+  const log = S.map.get(ds) ?? null;
+  const dc  = drinkCls(log != null ? log.drinks : null);
+  const lbl = log == null ? 'not logged'
+    : log.drinks === 0    ? 'sober'
+    : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
 
-  document.querySelectorAll(`.cg-cell[data-date="${CSS.escape(dateStr)}"]`).forEach(cell => {
-    // Rebuild class list, preserving state classes
-    const keep = ['future','is-today'].filter(c => cell.classList.contains(c));
-    cell.className = ['cg-cell', dc, ...keep].join(' ');
-    cell.setAttribute('aria-label', `${dateStr}: ${dText}`);
+  document.querySelectorAll(`.gc[data-date="${CSS.escape(ds)}"]`).forEach(c => {
+    const keep = ['future','today'].filter(k => c.classList.contains(k));
+    c.className = ['gc', dc, ...keep].join(' ');
+    c.setAttribute('aria-label', `${ds}: ${lbl}`);
 
-    // Rebuild inner content if in scroll mode
-    const inner = cell.querySelector('.cg-cell-inner');
-    if (inner) {
-      inner.replaceChildren();
-      inner.appendChild(el('span', { class: 'cg-cell-day' },
-        String(parseDate(dateStr).getDate())));
-      if (log != null) {
-        inner.appendChild(el('span', { class: 'cg-cell-count' }, String(log.drinks)));
-        if (log.note) {
-          const noteEl = el('span', { class: 'cg-cell-note' });
-          noteEl.textContent = log.note.length > 36 ? log.note.slice(0, 36) + '…' : log.note;
-          inner.appendChild(noteEl);
-        }
+    const inn = c.querySelector('.gc-inner');
+    if (!inn) return;
+    inn.replaceChildren();
+    inn.appendChild(el('span', { class: 'gc-day' }, String(parseD(ds).getDate())));
+    if (log != null) {
+      inn.appendChild(el('span', { class: 'gc-count' }, String(log.drinks)));
+      if (log.note) {
+        const ne = el('span', { class: 'gc-note' });
+        ne.textContent = log.note.length > 28 ? log.note.slice(0, 28) + '…' : log.note;
+        inn.appendChild(ne);
       }
     }
   });
 }
 
-/* ── Entry point ──────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════
+   COMMIT GRAPH — rendering
+   ═══════════════════════════════════════════════════════ */
 
-function renderCommitGraph() {
-  CellEditor.close(false); // close without saving if a re-render is forced externally
+function renderGraph() {
+  Editor.close(false);
   FisheyeEngine.destroy();
-  const mount    = $id('cg-mount');
-  const controls = $id('cg-controls');
-  if (S.graphMode === 'overview') {
-    renderOverview(mount, controls);
-  } else {
-    renderScrollView(mount, controls);
-  }
+  if (S.graphMode === 'overview') renderOverview();
+  else renderScrollMode();
 }
 
-/* ── Overview mode ────────────────────────────────────────────── */
+/* ── Overview ───────────────────────────────────────── */
 
-function renderOverview(mount, controls) {
-  controls.replaceChildren(); // no controls in overview mode
+function renderOverview() {
+  const ctrl  = $id('graph-ctrl');
+  const mount = $id('graph-mount');
+  ctrl.replaceChildren();
 
-  const cols       = buildWeekColumns();
-  const monthLbls  = buildMonthLabels(cols);
-  const wrap       = el('div', { class: 'cg-overview' });
+  const cols   = buildWeekCols();
+  const mlbls  = buildMonthLabels(cols);
+  const wrap   = el('div', { class: 'ov' });
 
-  // Month label row
-  const mRow = el('div', { class: 'cg-ov-month-row', 'aria-hidden': 'true' });
-  mRow.appendChild(el('div', { class: 'cg-ov-dow-spacer' }));
-  const mWrap = el('div', { class: 'cg-ov-months' });
-  for (let w = 0; w < 52; w++) {
-    mWrap.appendChild(el('div', { class: 'cg-ov-month-lbl' }, monthLbls[w]));
-  }
-  mRow.appendChild(mWrap);
-  wrap.appendChild(mRow);
+  // Month labels row
+  const mrow = el('div', { class: 'ov-months', 'aria-hidden': 'true' });
+  cols.forEach((_, w) => mrow.appendChild(el('div', { class: 'ov-mlbl' }, mlbls[w])));
+  wrap.appendChild(mrow);
 
   // Body: DOW labels + week columns
-  const body   = el('div', { class: 'cg-ov-body' });
-  const dowCol = el('div', { class: 'cg-ov-dow-col', 'aria-hidden': 'true' });
-  CG_DOW.forEach((d, i) => {
-    dowCol.appendChild(el('div', { class: 'cg-ov-dow-lbl' }, i % 2 === 1 ? d[0] : ''));
-  });
-  body.appendChild(dowCol);
+  const body  = el('div', { class: 'ov-body' });
+  const dows  = el('div', { class: 'ov-dows', 'aria-hidden': 'true' });
+  DOWS.forEach((d, i) => dows.appendChild(el('div', { class: 'ov-dow' }, i % 2 === 1 ? d : '')));
+  body.appendChild(dows);
 
-  const weeksWrap = el('div', { class: 'cg-ov-weeks' });
-  for (let w = 0; w < 52; w++) {
-    const col = el('div', { class: 'cg-ov-col', 'data-col': String(w) });
-    for (let d = 0; d < 7; d++) {
-      col.appendChild(makeCgCell(cols[w][d], 'overview'));
-    }
-    weeksWrap.appendChild(col);
-  }
-  body.appendChild(weeksWrap);
+  const grid = el('div', { class: 'ov-grid' });
+  cols.forEach((week, w) => {
+    const col = el('div', { class: 'ov-col', 'data-col': String(w) });
+    week.forEach(entry => col.appendChild(makeCell(entry, 'overview')));
+    grid.appendChild(col);
+  });
+  body.appendChild(grid);
   wrap.appendChild(body);
   mount.replaceChildren(wrap);
 
-  // Click or keyboard → switch to scroll mode
-  weeksWrap.addEventListener('click', e => {
-    const cell = e.target.closest('.cg-cell[data-date]');
-    if (!cell) return;
-    S.graphMode        = 'scroll';
-    S.graphScrollTarget = cell.dataset.date;
-    renderCommitGraph();
+  // Click or keyboard → switch to scroll mode and open editor
+  const handleActivate = ds => {
+    S.graphMode   = 'scroll';
+    S.graphTarget = ds;
+    renderGraph();
+  };
+
+  grid.addEventListener('click', e => {
+    const c = e.target.closest('.gc[data-date]');
+    if (c && !c.classList.contains('future')) handleActivate(c.dataset.date);
   });
-  weeksWrap.addEventListener('keydown', e => {
+  grid.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const cell = e.target.closest('.cg-cell[data-date]');
-    if (cell && !cell.classList.contains('future')) {
-      e.preventDefault();
-      S.graphMode        = 'scroll';
-      S.graphScrollTarget = cell.dataset.date;
-      renderCommitGraph();
-    }
+    const c = e.target.closest('.gc[data-date]');
+    if (c && !c.classList.contains('future')) { e.preventDefault(); handleActivate(c.dataset.date); }
   });
 }
 
-/* ── Scroll mode ──────────────────────────────────────────────── */
+/* ── Scroll mode ─────────────────────────────────────── */
 
-function renderScrollView(mount, controls) {
+function renderScrollMode() {
+  const ctrl  = $id('graph-ctrl');
+  const mount = $id('graph-mount');
+
   // Back button
-  controls.replaceChildren();
-  const backBtn = el('button', { class: 'icon-btn', 'aria-label': 'Back to overview' }, '← overview');
-  controls.appendChild(backBtn);
-  backBtn.addEventListener('click', () => {
-    S.graphMode = 'overview';
-    renderCommitGraph();
-  });
+  ctrl.replaceChildren();
+  const backBtn = el('button', { class: 'btn-ghost sm', 'aria-label': 'Back to overview' }, '← overview');
+  ctrl.appendChild(backBtn);
+  backBtn.addEventListener('click', () => { S.graphMode = 'overview'; renderGraph(); });
 
-  const cols      = buildWeekColumns();
-  const monthLbls = buildMonthLabels(cols);
-  const wrap      = el('div', { class: 'cg-scroll-wrap' });
+  const cols  = buildWeekCols();
+  const mlbls = buildMonthLabels(cols);
+  const wrap  = el('div', { class: 'sc' });
 
-  // Body row: DOW area (sticky left) + scrollable columns
-  const body    = el('div', { class: 'cg-sc-body' });
-  const dowArea = el('div', { class: 'cg-sc-dow-area' });
-  dowArea.appendChild(el('div', { class: 'cg-sc-dow-spacer' })); // aligns with month row
-  const dowCol  = el('div', { class: 'cg-sc-dow-col', 'aria-hidden': 'true' });
-  CG_DOW.forEach((d, i) => {
-    dowCol.appendChild(el('div', { class: 'cg-sc-dow-lbl' }, i % 2 === 1 ? d.slice(0, 2) : ''));
-  });
+  const body = el('div', { class: 'sc-body' });
+
+  // DOW labels (fixed left)
+  const dowArea = el('div', { class: 'sc-dows', 'aria-hidden': 'true' });
+  dowArea.appendChild(el('div', { class: 'sc-dow-gap' }));
+  const dowCol = el('div', { class: 'sc-dow-col' });
+  DOWS.forEach((d, i) => dowCol.appendChild(el('div', { class: 'sc-dow-lbl' }, i % 2 === 1 ? d : '')));
   dowArea.appendChild(dowCol);
   body.appendChild(dowArea);
 
-  // Scrollable container
-  const scrollOuter = el('div', { class: 'cg-sc-outer', id: 'cg-sc-outer' });
-  const scrollInner = el('div', { class: 'cg-sc-inner', id: 'cg-sc-inner' });
+  // Scrollable week columns
+  const outer = el('div', { class: 'sc-outer', id: 'sc-outer' });
+  const inner = el('div', { class: 'sc-inner', id: 'sc-inner' });
 
-  for (let w = 0; w < 52; w++) {
-    const weekCol = el('div', { class: 'cg-sc-col', 'data-col': String(w) });
-    // Month label at top of each column
-    const mLbl = el('div', { class: 'cg-sc-month-lbl', 'aria-hidden': 'true' }, monthLbls[w]);
-    weekCol.appendChild(mLbl);
-    // 7 day cells
-    for (let d = 0; d < 7; d++) {
-      weekCol.appendChild(makeCgCell(cols[w][d], 'scroll'));
-    }
-    scrollInner.appendChild(weekCol);
-  }
+  cols.forEach((week, w) => {
+    const col = el('div', { class: 'sc-col', 'data-col': String(w) });
+    col.appendChild(el('div', { class: 'sc-mlbl', 'aria-hidden': 'true' }, mlbls[w]));
+    week.forEach(entry => col.appendChild(makeCell(entry, 'scroll')));
+    inner.appendChild(col);
+  });
 
-  scrollOuter.appendChild(scrollInner);
-  body.appendChild(scrollOuter);
+  outer.appendChild(inner);
+  body.appendChild(outer);
   wrap.appendChild(body);
   mount.replaceChildren(wrap);
 
-  // Scroll to target date after DOM is in place
+  const target = S.graphTarget;
+  S.graphTarget = null;
+
   requestAnimationFrame(() => {
-    const target = S.graphScrollTarget || todayStr();
-    S.graphScrollTarget = null;
-
+    // Scroll target column near right edge
     let targetCol = 51;
-    for (let w = 0; w < 52; w++) {
-      if (cols[w].some(e => e.dateStr === target)) { targetCol = w; break; }
+    if (target) {
+      for (let w = 0; w < 52; w++) {
+        if (cols[w].some(e => e.ds === target)) { targetCol = w; break; }
+      }
     }
-    // Put target ~2 columns from the right edge
-    const outer = $id('cg-sc-outer');
-    outer.scrollLeft = Math.max(0, targetCol * CG_STEP - outer.clientWidth + 2 * CG_STEP);
+    outer.scrollLeft = Math.max(0, targetCol * CG_STEP - outer.clientWidth + 3 * CG_STEP);
 
-    FisheyeEngine.init(scrollInner, outer, cols);
+    FisheyeEngine.init(inner, outer);
+
+    // If we drilled in from overview, open the editor for that date
+    if (target) {
+      const cell = inner.querySelector(`.gc[data-date="${CSS.escape(target)}"]`);
+      if (cell && !cell.classList.contains('future')) {
+        setTimeout(() => Editor.open(target, cell), 60);
+      }
+    }
   });
 
-  // Click / keyboard → open inline editor
-  scrollInner.addEventListener('click', e => {
-    const cell = e.target.closest('.cg-cell[data-date]');
-    if (cell && !cell.classList.contains('future')) CellEditor.open(cell.dataset.date, cell);
+  // Click / keyboard → inline editor
+  inner.addEventListener('click', e => {
+    const c = e.target.closest('.gc[data-date]');
+    if (c && !c.classList.contains('future')) Editor.open(c.dataset.date, c);
   });
-  scrollInner.addEventListener('keydown', e => {
+  inner.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const cell = e.target.closest('.cg-cell[data-date]');
-    if (cell && !cell.classList.contains('future')) {
-      e.preventDefault();
-      CellEditor.open(cell.dataset.date, cell);
-    }
+    const c = e.target.closest('.gc[data-date]');
+    if (c && !c.classList.contains('future')) { e.preventDefault(); Editor.open(c.dataset.date, c); }
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════
    FISHEYE ENGINE
-   Scales week-columns by distance from the cursor/touch.
-   Only mutates a ±5 column neighbourhood per frame.
-   ═══════════════════════════════════════════════════════════════ */
+   Scales week-columns by distance from cursor/touch.
+   Only mutates a ±5-column neighbourhood per frame.
+   ═══════════════════════════════════════════════════════ */
 
 const FisheyeEngine = {
-  _outer:      null,
-  _inner:      null,
-  _colEls:     null,
-  _pendingX:   -1,
-  _rafId:      null,
-  _dirtyRange: null,
-  _touchTimer: null,
-  _touchArmed: false,
-  _touchX0:    0,
-  _touchY0:    0,
+  _outer: null, _inner: null, _cols: null,
+  _px:    -1,   _raf:   null,  _dirty: null,
+  _tt:    null, _armed: false, _tx: 0, _ty: 0,
 
   init(inner, outer) {
-    this._outer  = outer;
-    this._inner  = inner;
-    this._colEls = Array.from(inner.querySelectorAll('.cg-sc-col'));
+    this._inner = inner;
+    this._outer = outer;
+    this._cols  = Array.from(inner.querySelectorAll('.sc-col'));
 
-    this._mm  = e => { this._pendingX = e.clientX; this._frame(); };
-    this._ml  = ()  => { this._pendingX = -1; this._frame(); };
-    this._ts  = e => this._touchStart(e);
-    this._tm  = e => this._touchMove(e);
-    this._te  = ()  => { this._pendingX = -1; clearTimeout(this._touchTimer); this._touchArmed = false; this._frame(); };
+    this._mm = e  => { this._px = e.clientX; this._sched(); };
+    this._ml = () => { this._px = -1;        this._sched(); };
+    this._ts = e  => this._touchStart(e);
+    this._tm = e  => this._touchMove(e);
+    this._te = () => { this._px = -1; clearTimeout(this._tt); this._armed = false; this._sched(); };
 
     outer.addEventListener('mousemove',   this._mm);
     outer.addEventListener('mouseleave',  this._ml);
@@ -718,540 +503,466 @@ const FisheyeEngine = {
 
   destroy() {
     if (!this._outer) return;
-    this._outer.removeEventListener('mousemove',   this._mm);
-    this._outer.removeEventListener('mouseleave',  this._ml);
-    this._outer.removeEventListener('touchstart',  this._ts);
-    this._outer.removeEventListener('touchmove',   this._tm);
-    this._outer.removeEventListener('touchend',    this._te);
-    this._outer.removeEventListener('touchcancel', this._te);
-    clearTimeout(this._touchTimer);
-    if (this._rafId) cancelAnimationFrame(this._rafId);
+    const outer = this._outer;
+    outer.removeEventListener('mousemove',   this._mm);
+    outer.removeEventListener('mouseleave',  this._ml);
+    outer.removeEventListener('touchstart',  this._ts);
+    outer.removeEventListener('touchmove',   this._tm);
+    outer.removeEventListener('touchend',    this._te);
+    outer.removeEventListener('touchcancel', this._te);
+    clearTimeout(this._tt);
+    if (this._raf) cancelAnimationFrame(this._raf);
     this._resetAll();
-    this._outer = this._inner = this._colEls = null;
+    this._outer = this._inner = this._cols = null;
   },
 
   _touchStart(e) {
     const t = e.touches[0];
-    this._touchX0 = t.clientX; this._touchY0 = t.clientY;
-    this._touchArmed = false;
-    clearTimeout(this._touchTimer);
-    this._touchTimer = setTimeout(() => {
-      this._touchArmed = true;
-      this._pendingX   = this._touchX0;
-      this._frame();
+    this._tx = t.clientX; this._ty = t.clientY; this._armed = false;
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => {
+      this._armed = true;
+      this._px    = this._tx;
+      this._sched();
     }, 80);
   },
 
   _touchMove(e) {
-    const t  = e.touches[0];
-    const dx = Math.abs(t.clientX - this._touchX0);
-    const dy = Math.abs(t.clientY - this._touchY0);
-    if (!this._touchArmed) {
-      if (dx > 8 || dy > 8) clearTimeout(this._touchTimer);
+    const t = e.touches[0];
+    if (!this._armed) {
+      if (Math.abs(t.clientX - this._tx) > 8 || Math.abs(t.clientY - this._ty) > 8) {
+        clearTimeout(this._tt);
+      }
       return;
     }
     e.preventDefault();
-    this._pendingX = t.clientX;
-    this._frame();
+    this._px = t.clientX;
+    this._sched();
   },
 
-  _frame() {
-    if (this._rafId) return;
-    this._rafId = requestAnimationFrame(() => {
-      this._rafId = null;
-      this._apply();
-    });
+  _sched() {
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => { this._raf = null; this._apply(); });
   },
 
   _apply() {
-    if (!this._colEls) return;
-    if (this._pendingX < 0) { this._resetAll(); return; }
+    if (!this._cols) return;
+    if (this._px < 0) { this._resetAll(); return; }
 
-    const rect      = this._outer.getBoundingClientRect();
-    const contentX  = this._pendingX - rect.left + this._outer.scrollLeft;
-    const cursorCol = Math.floor(contentX / CG_STEP);
-    if (cursorCol < 0 || cursorCol >= 52) { this._resetAll(); return; }
+    const rect    = this._outer.getBoundingClientRect();
+    const cx      = this._px - rect.left + this._outer.scrollLeft;
+    const curCol  = Math.floor(cx / CG_STEP);
+    if (curCol < 0 || curCol >= 52) { this._resetAll(); return; }
 
-    const R      = 5;
-    const lo     = Math.max(0,  cursorCol - R);
-    const hi     = Math.min(51, cursorCol + R);
+    const R  = 5;
+    const lo = Math.max(0, curCol - R);
+    const hi = Math.min(51, curCol + R);
 
-    // Reset columns that were dirty but are now outside the neighbourhood
-    if (this._dirtyRange) {
-      for (let i = this._dirtyRange.lo; i <= this._dirtyRange.hi; i++) {
+    // Reset previously dirtied columns that are now out of range
+    if (this._dirty) {
+      for (let i = this._dirty.lo; i <= this._dirty.hi; i++) {
         if (i < lo || i > hi) this._setCol(i, CG_BASE);
       }
     }
 
     for (let i = lo; i <= hi; i++) {
-      const dist  = Math.abs(i - cursorCol);
-      const scale = CG_SCALES[Math.min(dist, CG_SCALES.length - 1)];
+      const d     = Math.abs(i - curCol);
+      const scale = CG_SCALES[Math.min(d, CG_SCALES.length - 1)];
       this._setCol(i, Math.round(CG_BASE * scale));
     }
-    this._dirtyRange = { lo, hi };
+    this._dirty = { lo, hi };
 
-    // Reveal inner content only in the peak column
-    this._colEls.forEach((col, i) => {
+    // Reveal inner content in sufficiently large columns
+    this._cols.forEach(col => {
       const w = parseFloat(col.style.width) || CG_BASE;
-      col.querySelectorAll('.cg-cell-inner').forEach(inn => {
-        inn.style.opacity = w >= 48 ? '1' : '0';
+      col.querySelectorAll('.gc-inner').forEach(inn => {
+        inn.style.opacity = w >= 46 ? '1' : '0';
       });
     });
   },
 
   _setCol(i, w) {
-    const col = this._colEls[i];
+    const col = this._cols[i];
     if (!col) return;
     col.style.width    = `${w}px`;
     col.style.minWidth = `${w}px`;
-    col.querySelectorAll('.cg-cell').forEach(c => { c.style.height = `${w}px`; });
+    col.querySelectorAll('.gc').forEach(c => { c.style.height = `${w}px`; });
   },
 
   _resetAll() {
-    if (this._dirtyRange) {
-      for (let i = this._dirtyRange.lo; i <= this._dirtyRange.hi; i++) {
-        this._setCol(i, CG_BASE);
-      }
-      this._dirtyRange = null;
+    if (this._dirty) {
+      for (let i = this._dirty.lo; i <= this._dirty.hi; i++) this._setCol(i, CG_BASE);
+      this._dirty = null;
     }
-    this._inner?.querySelectorAll('.cg-cell-inner').forEach(inn => {
-      inn.style.opacity = '0';
-    });
+    this._inner?.querySelectorAll('.gc-inner').forEach(inn => { inn.style.opacity = '0'; });
   },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   INLINE CELL EDITOR
-   Opens an absolute-positioned card anchored near the clicked cell.
-   Auto-saves on close; shows undo toast.
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   INLINE EDITOR
+   Fixed-position card anchored near the clicked cell.
+   Auto-saves on close (outside click, Escape, X button).
+   ═══════════════════════════════════════════════════════ */
 
-const CellEditor = {
-  _dateStr:     null,
-  _cardEl:      null,
-  _originalLog: null,
-  _dirty:       false,
-  _countEl:     null,
-  _noteEl:      null,
-  _outsideClick: null,
-  _escKey:      null,
-  _vvResize:    null,
+const Editor = {
+  _ds:    null, _card:  null, _orig:  null, _dirty: false,
+  _cEl:   null, _nEl:   null,
+  _oc:    null, _ek:    null, _vv:    null,
 
-  open(dateStr, anchorEl) {
-    // Commit any in-flight quick-add before opening editor
+  open(ds, anchor) {
+    // Commit any pending quick-add before we start editing
     if (_qaTimer !== null) {
-      clearTimeout(_qaTimer);
-      _qaTimer = null;
-      hideToast();
-      _commitQuickAdd();
+      clearTimeout(_qaTimer); _qaTimer = null;
+      hideToast(); _commitQA();
     }
-    // Close any currently open card (save it)
-    if (this._cardEl) this.close(true);
+    // Close any existing editor (saving it)
+    if (this._card) this.close(true);
 
-    this._dateStr     = dateStr;
-    this._originalLog = S.map.get(dateStr) ?? null;
-    this._dirty       = false;
+    this._ds    = ds;
+    this._orig  = S.map.get(ds) ?? null;
+    this._dirty = false;
+    const log   = this._orig;
 
-    const log = this._originalLog;
-    const dateLabel = parseDate(dateStr).toLocaleDateString(undefined, {
+    const dlbl = parseD(ds).toLocaleDateString(undefined, {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
 
-    const card = el('div', {
-      class: 'cg-edit-card', id: 'cg-edit-card',
-      role: 'dialog', 'aria-label': 'Edit log entry',
-    });
+    // Build card
+    const card = el('div', { class: 'edit-card', id: 'edit-card',
+      role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Edit log entry' });
 
     // Header
-    const hdr = el('div', { class: 'cg-edit-hdr' });
-    hdr.appendChild(el('span', { class: 'cg-edit-date' }, dateLabel));
-    const closeBtn = el('button', {
-      class: 'icon-btn cg-edit-close', type: 'button', 'aria-label': 'Close',
-    }, '✕');
-    hdr.appendChild(closeBtn);
+    const hdr = el('div', { class: 'edit-hdr' });
+    hdr.appendChild(el('span', { class: 'edit-date' }, dlbl));
+    const xBtn = el('button', { class: 'edit-x', type: 'button', 'aria-label': 'Close' }, '✕');
+    hdr.appendChild(xBtn);
     card.appendChild(hdr);
 
     // Drink stepper
-    const stepper  = el('div', { class: 'drink-stepper', role: 'group', 'aria-label': 'Drink count' });
-    const decBtn   = el('button', { class: 'stepper-btn', type: 'button', 'aria-label': 'Fewer' }, '−');
-    const countInp = el('input', {
-      type: 'number', class: 'cg-edit-count',
-      min: '0', max: '100', value: String(log ? log.drinks : 0),
-      'aria-label': 'Number of drinks',
-    });
-    const incBtn = el('button', { class: 'stepper-btn', type: 'button', 'aria-label': 'More' }, '+');
-    stepper.append(decBtn, countInp, incBtn);
-    card.appendChild(stepper);
+    const step = el('div', { class: 'edit-stepper', role: 'group', 'aria-label': 'Drink count' });
+    const dec  = el('button', { class: 'step-btn', type: 'button', 'aria-label': 'Remove one' }, '−');
+    const cnt  = el('input',  { type: 'number', class: 'edit-count', min: '0', max: '100',
+                                  value: String(log ? log.drinks : 0), 'aria-label': 'Number of drinks' });
+    const inc  = el('button', { class: 'step-btn', type: 'button', 'aria-label': 'Add one' }, '+');
+    step.append(dec, cnt, inc);
+    card.appendChild(step);
 
-    // Note textarea
-    const noteWrap = el('div', { class: 'field' });
-    const noteLbl  = el('label', {});
-    noteLbl.textContent = 'note';
-    const noteHintEl = el('span', { class: 'hint' }, 'optional · max 500 chars');
-    noteLbl.appendChild(noteHintEl);
-    const noteTA = el('textarea', {
-      class: 'cg-edit-note', rows: '2', maxlength: '500',
-      placeholder: 'what were you drinking?',
-    });
-    noteTA.value = log ? (log.note || '') : '';
-    noteWrap.append(noteLbl, noteTA);
-    card.appendChild(noteWrap);
+    // Note
+    const noteTA = el('textarea', { class: 'edit-note', rows: '2', maxlength: '500',
+                                     placeholder: 'notes…' });
+    noteTA.value = log?.note || '';
+    card.appendChild(noteTA);
 
-    // Delete action
-    const actions = el('div', { class: 'cg-edit-actions' });
-    const delBtn  = el('button', { class: 'btn-ghost cg-edit-delete', type: 'button' }, 'delete');
+    // Footer
+    const foot   = el('div', { class: 'edit-footer' });
+    const delBtn = el('button', { class: 'edit-del', type: 'button' }, 'delete entry');
     if (!log) delBtn.hidden = true;
-    actions.appendChild(delBtn);
-    card.appendChild(actions);
+    foot.appendChild(delBtn);
+    foot.appendChild(el('span', { class: 'edit-hint' }, 'click away to save'));
+    card.appendChild(foot);
 
-    // Wire up events
-    const markDirty = () => { this._dirty = true; };
-    decBtn.addEventListener('click', () => {
-      countInp.value = String(Math.max(0, (parseInt(countInp.value, 10) || 0) - 1));
-      markDirty();
-    });
-    incBtn.addEventListener('click', () => {
-      countInp.value = String(Math.min(100, (parseInt(countInp.value, 10) || 0) + 1));
-      markDirty();
-    });
-    countInp.addEventListener('input', markDirty);
-    noteTA.addEventListener('input', markDirty);
-    closeBtn.addEventListener('click', () => this.close(true));
+    // Events
+    const dirty = () => { this._dirty = true; };
+    dec.addEventListener('click', () => { cnt.value = String(Math.max(0,   (parseInt(cnt.value,10)||0)-1)); dirty(); });
+    inc.addEventListener('click', () => { cnt.value = String(Math.min(100, (parseInt(cnt.value,10)||0)+1)); dirty(); });
+    cnt.addEventListener('input', dirty);
+    noteTA.addEventListener('input', dirty);
+    xBtn.addEventListener('click', () => this.close(true));
 
     delBtn.addEventListener('click', async () => {
       if (!confirm('Delete this entry?')) return;
       try {
-        await api.del(`/api/logs/${this._dateStr}`);
-        applyLogDelete(this._dateStr);
-        const d = this._dateStr;
-        this._dirty = false;
-        this.close(false);
-        updateCgCell(d);
-        refreshStats();
-      } catch (err) { console.error('delete:', err); }
+        await api.del(`/api/logs/${this._ds}`);
+        applyLogDelete(this._ds);
+        const d = this._ds; this._dirty = false; this.close(false);
+        patchCell(d); refreshStats();
+      } catch (err) { console.error('delete failed:', err); }
     });
 
-    // Outside-click closes (saves)
-    this._outsideClick = e => {
-      if (this._cardEl && !this._cardEl.contains(e.target) && e.target !== anchorEl) {
+    // Outside click = save & close
+    this._oc = e => {
+      if (this._card && !this._card.contains(e.target) && e.target !== anchor) {
         this.close(true);
       }
     };
-    this._escKey = e => { if (e.key === 'Escape' && this._cardEl) this.close(true); };
+    this._ek = e => { if (e.key === 'Escape' && this._card) this.close(true); };
 
-    // Mobile: lift card above software keyboard
-    this._vvResize = () => {
+    // Mobile: float above keyboard
+    this._vv = () => {
       const vv = window.visualViewport;
-      if (!vv || !this._cardEl) return;
-      const bottom = vv.offsetTop + vv.height - 12;
-      const rect   = this._cardEl.getBoundingClientRect();
-      if (rect.bottom > bottom) {
-        this._cardEl.style.top = `${parseFloat(this._cardEl.style.top) - (rect.bottom - bottom)}px`;
+      if (!vv || !this._card) return;
+      const bot = vv.offsetTop + vv.height - 12;
+      const r   = this._card.getBoundingClientRect();
+      if (r.bottom > bot) {
+        this._card.style.top = `${parseFloat(this._card.style.top) - (r.bottom - bot)}px`;
       }
     };
-    noteTA.addEventListener('focus', () => window.visualViewport?.addEventListener('resize', this._vvResize));
-    noteTA.addEventListener('blur',  () => window.visualViewport?.removeEventListener('resize', this._vvResize));
+    noteTA.addEventListener('focus', () => window.visualViewport?.addEventListener('resize', this._vv));
+    noteTA.addEventListener('blur',  () => window.visualViewport?.removeEventListener('resize', this._vv));
 
     document.body.appendChild(card);
-    this._cardEl  = card;
-    this._countEl = countInp;
-    this._noteEl  = noteTA;
+    this._card = card;
+    this._cEl  = cnt;
+    this._nEl  = noteTA;
 
-    this._position(anchorEl);
+    this._position(anchor);
+
+    // Delay attaching outside listener so the opening click doesn't immediately fire it
     setTimeout(() => {
-      document.addEventListener('click', this._outsideClick, { capture: true });
-      document.addEventListener('keydown', this._escKey);
+      document.addEventListener('click',   this._oc, { capture: true });
+      document.addEventListener('keydown', this._ek);
     }, 0);
 
-    countInp.focus();
-    countInp.select();
+    cnt.focus();
+    cnt.select();
   },
 
   close(save) {
-    if (!this._cardEl) return;
-    document.removeEventListener('click', this._outsideClick, { capture: true });
-    document.removeEventListener('keydown', this._escKey);
-    window.visualViewport?.removeEventListener('resize', this._vvResize);
+    if (!this._card) return;
+    document.removeEventListener('click',   this._oc, { capture: true });
+    document.removeEventListener('keydown', this._ek);
+    window.visualViewport?.removeEventListener('resize', this._vv);
 
-    const needsSave = save && this._dirty;
-    const dateStr   = this._dateStr;
-    this._cardEl.remove();
-    this._cardEl = this._dateStr = this._originalLog = null;
-    this._dirty  = false;
+    const doSave = save && this._dirty;
+    const ds = this._ds;
+    this._card.remove();
+    this._card = this._ds = this._orig = null;
+    this._dirty = false;
 
-    if (needsSave) this._save(dateStr);
+    if (doSave) this._save(ds);
   },
 
-  async _save(dateStr) {
-    const drinks = parseInt(this._countEl?.value ?? '0', 10);
+  async _save(ds) {
+    const drinks = parseInt(this._cEl?.value ?? '0', 10);
     if (isNaN(drinks) || drinks < 0 || drinks > 100) return;
-    const note        = (this._noteEl?.value ?? '').trim();
-    const originalLog = S.map.get(dateStr) ?? null;
+    const note = (this._nEl?.value ?? '').trim();
+    const orig = S.map.get(ds) ?? null;
 
-    // Optimistic
-    applyLogSave({ id: originalLog?.id || '', date: dateStr, drinks, note });
-    updateCgCell(dateStr);
+    // Optimistic update
+    applyLogSave({ id: orig?.id || '', date: ds, drinks, note });
+    patchCell(ds);
     refreshStats();
 
     // Toast with undo
-    const shortDate = parseDate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    showToast(`Saved ${shortDate}`, () => {
-      if (originalLog === null) applyLogDelete(dateStr);
-      else applyLogSave(originalLog);
-      updateCgCell(dateStr);
+    const label = parseD(ds).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    showToast(`saved · ${label}`, () => {
+      if (orig === null) applyLogDelete(ds);
+      else applyLogSave(orig);
+      patchCell(ds);
       refreshStats();
     });
 
     // Persist
     try {
-      const saved = await api.post('/api/logs', { date: dateStr, drinks, note });
+      const saved = await api.post('/api/logs', { date: ds, drinks, note });
       applyLogSave(saved);
-      updateCgCell(dateStr);
+      patchCell(ds);
     } catch {
-      if (originalLog === null) applyLogDelete(dateStr);
-      else applyLogSave(originalLog);
-      updateCgCell(dateStr);
+      // Revert on API failure
+      if (orig === null) applyLogDelete(ds);
+      else applyLogSave(orig);
+      patchCell(ds);
     }
   },
 
-  _position(anchorEl) {
-    const card    = this._cardEl;
-    const rect    = anchorEl.getBoundingClientRect();
-    const cardW   = 260;
-    const margin  = 10;
-    const estH    = 280;
+  _position(anchor) {
+    const r  = anchor.getBoundingClientRect();
+    const W  = 248;
+    const M  = 10;
+    const EH = 260; // estimated card height
 
-    let left = rect.left;
-    let top  = rect.bottom + margin;
+    let l = r.left;
+    let t = r.bottom + M;
 
-    // Clamp horizontal
-    if (left + cardW > window.innerWidth - margin) left = window.innerWidth - cardW - margin;
-    if (left < margin) left = margin;
+    if (l + W > window.innerWidth  - M) l = window.innerWidth  - W - M;
+    if (l < M) l = M;
+    if (t + EH > window.innerHeight - M) t = r.top - EH - M;
+    if (t < M) t = M;
 
-    // Flip above if card would go off bottom
-    if (top + estH > window.innerHeight - margin) {
-      top = rect.top - estH - margin;
-    }
-    if (top < margin) top = margin;
-
-    card.style.left  = `${left}px`;
-    card.style.top   = `${top}px`;
-    card.style.width = `${cardW}px`;
+    this._card.style.left = `${l}px`;
+    this._card.style.top  = `${t}px`;
   },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   VIEW: TIMELINE RIVER
-   Every day of the current year as a vertical bar.
-   Bar height is proportional to drink count.
-   Scrolls horizontally — automatically positions today ~25% from left.
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   MONTH VIEW
+   ═══════════════════════════════════════════════════════ */
+
+function renderMonth() {
+  const y   = S.moYear;
+  const m   = S.moMonth;
+  const ts  = today();
+  const now = new Date();
+
+  $id('mo-label').textContent =
+    new Date(y, m, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+  $id('btn-mo-next').disabled =
+    y > now.getFullYear() ||
+    (y === now.getFullYear() && m >= now.getMonth());
+
+  const grid = $id('mo-grid');
+  grid.replaceChildren();
+
+  // Day-of-week headers
+  ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(d =>
+    grid.appendChild(el('div', { class: 'mo-hdr', 'aria-hidden': 'true' }, d)));
+
+  // Blank offset (Mon-start)
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7;
+  const frag   = document.createDocumentFragment();
+  for (let i = 0; i < offset; i++) {
+    frag.appendChild(el('div', { class: 'mo-cell blank', 'aria-hidden': 'true' }));
+  }
+
+  const total = daysIn(y, m + 1);
+  for (let d = 1; d <= total; d++) {
+    const ds  = `${y}-${pad(m+1)}-${pad(d)}`;
+    const log = S.map.get(ds);
+    const fut = ds > ts;
+    const tod = ds === ts;
+    const dc  = drinkCls(log != null ? log.drinks : null);
+    const cls = ['mo-cell', dc, fut ? 'future' : '', tod ? 'today' : ''].filter(Boolean).join(' ');
+    const c   = el('div', { class: cls, 'data-date': ds });
+
+    if (!fut) {
+      c.setAttribute('tabindex', '0');
+      c.setAttribute('role', 'gridcell');
+    }
+    c.appendChild(el('span', { class: 'mo-day', 'aria-hidden': 'true' }, String(d)));
+    if (log != null) {
+      c.appendChild(el('span', { class: 'mo-n', 'aria-hidden': 'true' }, String(log.drinks)));
+    }
+    frag.appendChild(c);
+  }
+  grid.appendChild(frag);
+
+  grid.onclick = e => {
+    const c = e.target.closest('.mo-cell[data-date]');
+    if (c && !c.classList.contains('future')) Editor.open(c.dataset.date, c);
+  };
+  grid.onkeydown = e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const c = e.target.closest('.mo-cell[data-date]');
+    if (c && !c.classList.contains('future')) { e.preventDefault(); Editor.open(c.dataset.date, c); }
+  };
+}
+
+function initMonthNav() {
+  $id('btn-mo-prev').addEventListener('click', () => {
+    S.moMonth--;
+    if (S.moMonth < 0) { S.moMonth = 11; S.moYear--; }
+    if (S.view === 'month') renderMonth();
+  });
+  $id('btn-mo-next').addEventListener('click', () => {
+    const now   = new Date();
+    const atLim = S.moYear > now.getFullYear() ||
+      (S.moYear === now.getFullYear() && S.moMonth >= now.getMonth());
+    if (!atLim) {
+      S.moMonth++;
+      if (S.moMonth > 11) { S.moMonth = 0; S.moYear++; }
+      if (S.view === 'month') renderMonth();
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   RIVER VIEW
+   ═══════════════════════════════════════════════════════ */
 
 function renderRiver() {
-  const year  = new Date().getFullYear(); // river always shows current year
-  const today = todayStr();
+  const year  = new Date().getFullYear();
+  const ts    = today();
 
-  // Auto-scale: use max drinks in data, minimum 5
-  let maxDrinks = 0;
-  S.logs.forEach(l => { if (l.drinks > maxDrinks) maxDrinks = l.drinks; });
-  const scale = Math.max(maxDrinks, 5);
+  let maxD = 0;
+  S.logs.forEach(l => { if (l.drinks > maxD) maxD = l.drinks; });
+  const scale = Math.max(maxD, 5);
 
   const barsEl   = $id('river-bars');
   const monthsEl = $id('river-months');
   const yEl      = $id('river-y');
 
-  // ── Y axis ticks ──
-  const yFrag = document.createDocumentFragment();
-  yEl.style.height = `${RIVER_MAX_H + 20}px`; // bars + month label row below
-  const tickStep = Math.max(1, Math.ceil(scale / 4));
-  for (let v = scale; v >= 0; v -= tickStep) {
-    yFrag.appendChild(el('span', { class: 'river-y-tick' }, v));
+  // Y axis
+  yEl.style.height = `${R_H + 20}px`;
+  const yFrag  = document.createDocumentFragment();
+  const tStep  = Math.max(1, Math.ceil(scale / 4));
+  for (let v = scale; v >= 0; v -= tStep) {
+    yFrag.appendChild(el('span', { class: 'ry-tick' }, String(v)));
   }
   yEl.replaceChildren(yFrag);
 
-  // ── Bars and month labels ──
   const barFrag   = document.createDocumentFragment();
   const monthFrag = document.createDocumentFragment();
-  let todayIndex  = -1;
-  let dayIndex    = 0;
+  let todayIdx    = -1;
+  let dayIdx      = 0;
 
-  for (let m = 0; m < 12; m++) {
-    const days = daysInMonth(year, m + 1);
-
-    // Month label — width matches the number of bars for that month
-    const label = el('div', { class: 'river-month-label' }, MONTHS_SHORT[m]);
-    label.style.width    = `${days * BAR_STEP}px`;
-    label.style.minWidth = `${days * BAR_STEP}px`;
-    monthFrag.appendChild(label);
+  for (let mo = 0; mo < 12; mo++) {
+    const days  = daysIn(year, mo + 1);
+    const mlbl  = el('div', { class: 'rm-lbl' }, MONTHS[mo]);
+    mlbl.style.width    = `${days * R_STEP}px`;
+    mlbl.style.minWidth = `${days * R_STEP}px`;
+    monthFrag.appendChild(mlbl);
 
     for (let d = 1; d <= days; d++) {
-      const dateStr = `${year}-${pad(m + 1)}-${pad(d)}`;
-      const log     = S.map.get(dateStr);
-      const future  = dateStr > today;
-      const isToday = dateStr === today;
+      const ds  = `${year}-${pad(mo+1)}-${pad(d)}`;
+      const log = S.map.get(ds);
+      const fut = ds > ts;
+      const tod = ds === ts;
+      if (tod) todayIdx = dayIdx;
 
-      if (isToday) todayIndex = dayIndex;
-
-      // Determine bar height and colour class
-      let h, dc;
-      if (future) {
-        h = 2; dc = 'future';
+      let h, cls;
+      if (fut) {
+        h = 2; cls = 'future';
       } else if (log == null) {
-        h = 2; dc = 'none';         // unlogged: thin stub, barely visible
+        h = 2; cls = 'none-bar';
       } else if (log.drinks === 0) {
-        h = 4; dc = 'sober';        // sober: small but distinct
+        h = 4; cls = 'sober';
       } else {
-        h  = Math.max(6, Math.round((log.drinks / scale) * RIVER_MAX_H));
-        dc = drinkClass(log.drinks);
+        h   = Math.max(6, Math.round((log.drinks / scale) * R_H));
+        cls = drinkCls(log.drinks);
       }
 
       const bar = el('div', {
-        class:       `river-bar ${dc}${isToday ? ' is-today' : ''}`,
-        'data-date': dateStr,
-        role:        future ? undefined : 'button',
-        tabindex:    future ? '-1' : '0',
-        'aria-label': future ? undefined : (() => {
-          const dl = parseDate(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-          const dk = log == null ? 'not logged'
-            : log.drinks === 0   ? 'sober'
-            : `${log.drinks} drinks`;
+        class:       `rbar ${cls}${tod ? ' today' : ''}`,
+        'data-date': ds,
+        role:        fut ? undefined : 'button',
+        tabindex:    fut ? '-1' : '0',
+        'aria-label': fut ? undefined : (() => {
+          const dl = parseD(ds).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          const dk = log == null ? 'not logged' : log.drinks === 0 ? 'sober' : `${log.drinks}`;
           return `${dl}: ${dk}`;
         })(),
       });
       bar.style.height = `${h}px`;
       barFrag.appendChild(bar);
-      dayIndex++;
+      dayIdx++;
     }
   }
 
   barsEl.replaceChildren(barFrag);
   monthsEl.replaceChildren(monthFrag);
 
-  // Event delegation
   barsEl.onclick = e => {
-    const bar = e.target.closest('.river-bar[data-date]');
-    if (bar && !bar.classList.contains('future')) openModal(bar.dataset.date);
+    const b = e.target.closest('.rbar[data-date]');
+    if (b && !b.classList.contains('future')) Editor.open(b.dataset.date, b);
   };
   barsEl.onkeydown = e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const bar = e.target.closest('.river-bar[data-date]');
-    if (bar && !bar.classList.contains('future')) {
-      e.preventDefault();
-      openModal(bar.dataset.date);
-    }
+    const b = e.target.closest('.rbar[data-date]');
+    if (b && !b.classList.contains('future')) { e.preventDefault(); Editor.open(b.dataset.date, b); }
   };
 
-  // Scroll so today is visible ~25% from the left
-  if (todayIndex >= 0) {
+  if (todayIdx >= 0) {
     requestAnimationFrame(() => {
-      const scroll = $id('river-scroll');
-      scroll.scrollLeft = Math.max(0, todayIndex * BAR_STEP - scroll.clientWidth * 0.25);
+      const s = $id('river-scroll');
+      s.scrollLeft = Math.max(0, todayIdx * R_STEP - s.clientWidth * 0.25);
     });
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   VIEW: MONTH GRID
-   Standard Mon–Sun calendar. Drink count shown in each cell.
-   ═══════════════════════════════════════════════════════════════ */
-
-function renderMonthGrid() {
-  const year  = S.yearView;
-  const month = S.monthView;   // 0-indexed
-  const today = todayStr();
-  const now   = new Date();
-
-  $id('month-label').textContent =
-    new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
-
-  // Disable "next" if we're already at the current month
-  $id('btn-month-next').disabled =
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month >= now.getMonth());
-
-  const grid = $id('month-grid');
-
-  // Keep the 7 static header cells; clear everything else
-  const headers = Array.from(grid.querySelectorAll('.mcell-hdr'));
-  grid.replaceChildren(...headers);
-
-  // Empty offset slots (Monday = 0, …, Sunday = 6)
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
-  const frag   = document.createDocumentFragment();
-
-  for (let i = 0; i < offset; i++) {
-    frag.appendChild(el('div', { class: 'mcell empty', 'aria-hidden': 'true' }));
-  }
-
-  const total = daysInMonth(year, month + 1);
-  for (let d = 1; d <= total; d++) {
-    const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
-    const log     = S.map.get(dateStr);
-    const future  = dateStr > today;
-    const isToday = dateStr === today;
-    const dc      = drinkClass(log != null ? log.drinks : null);
-
-    const classes = ['mcell', dc, future ? 'future' : '', isToday ? 'is-today' : '']
-      .filter(Boolean).join(' ');
-    const attrs   = { class: classes, 'data-date': dateStr };
-
-    if (!future) {
-      attrs.role     = 'gridcell';
-      attrs.tabindex = '0';
-      const dText    = log == null ? 'not logged'
-        : log.drinks === 0 ? 'sober'
-        : `${log.drinks} drink${log.drinks !== 1 ? 's' : ''}`;
-      attrs['aria-label'] = `${dateStr}: ${dText}`;
-    }
-
-    const cell = el('div', attrs);
-    cell.appendChild(el('span', { class: 'mcell-num', 'aria-hidden': 'true' }, d));
-    if (log != null) {
-      cell.appendChild(el('span', { class: 'mcell-drinks', 'aria-hidden': 'true' }, log.drinks));
-    }
-    frag.appendChild(cell);
-  }
-
-  grid.appendChild(frag);
-
-  // Event delegation
-  grid.onclick = e => {
-    const cell = e.target.closest('.mcell[data-date]');
-    if (cell && !cell.classList.contains('future')) openModal(cell.dataset.date);
-  };
-  grid.onkeydown = e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const cell = e.target.closest('.mcell[data-date]');
-    if (cell && !cell.classList.contains('future')) {
-      e.preventDefault();
-      openModal(cell.dataset.date);
-    }
-  };
-}
-
-function initMonthNav() {
-  $id('btn-month-prev').addEventListener('click', () => {
-    S.monthView--;
-    if (S.monthView < 0) { S.monthView = 11; S.yearView--; }
-    if (S.view === 'month') renderMonthGrid();
-  });
-  $id('btn-month-next').addEventListener('click', () => {
-    const now      = new Date();
-    const atLimit  =
-      S.yearView > now.getFullYear() ||
-      (S.yearView === now.getFullYear() && S.monthView >= now.getMonth());
-    if (!atLimit) {
-      S.monthView++;
-      if (S.monthView > 11) { S.monthView = 0; S.yearView++; }
-      if (S.view === 'month') renderMonthGrid();
-    }
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   SHARED TOAST
-   Used by both quick-add and the inline cell editor.
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   TOAST (shared by quick-add and inline editor)
+   ═══════════════════════════════════════════════════════ */
 
 let _toastTimer  = null;
 let _toastUndoFn = null;
@@ -1259,10 +970,10 @@ let _toastUndoFn = null;
 function showToast(msg, undoFn) {
   clearTimeout(_toastTimer);
   _toastUndoFn = undoFn;
-  $id('quickadd-toast-msg').textContent = msg;
-  $id('quickadd-toast').hidden = false;
+  $id('toast-msg').textContent = msg;
+  $id('toast').hidden = false;
   _toastTimer = setTimeout(() => {
-    $id('quickadd-toast').hidden = true;
+    $id('toast').hidden = true;
     _toastUndoFn = null;
     _toastTimer  = null;
   }, 5000);
@@ -1270,27 +981,15 @@ function showToast(msg, undoFn) {
 
 function hideToast() {
   clearTimeout(_toastTimer);
-  _toastTimer  = null;
+  $id('toast').hidden = true;
   _toastUndoFn = null;
-  $id('quickadd-toast').hidden = true;
+  _toastTimer  = null;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   QUICK-ADD (+1 BUTTON)
-   Optimistic UI: the count updates instantly; the API call is
-   deferred until the 5-second undo toast expires (or is dismissed).
-   Rapid taps are coalesced — only one network request fires per batch.
-   ═══════════════════════════════════════════════════════════════ */
-
-let _qaOriginal = null; // snapshot of {drinks, note, id} before this batch
-let _qaTarget   = 0;    // optimistic target count
-let _qaTimer    = null; // setTimeout handle for the deferred commit
-
-function initQuickAdd() {
-  $id('btn-quickadd').addEventListener('click', handleQuickAdd);
-  $id('btn-quickadd-undo').addEventListener('click', () => {
+function initToast() {
+  $id('toast-undo').addEventListener('click', () => {
     clearTimeout(_toastTimer);
-    $id('quickadd-toast').hidden = true;
+    $id('toast').hidden = true;
     const fn = _toastUndoFn;
     _toastUndoFn = null;
     _toastTimer  = null;
@@ -1298,94 +997,98 @@ function initQuickAdd() {
   });
 }
 
-function handleQuickAdd() {
-  const today    = todayStr();
-  const existing = S.map.get(today);
+/* ═══════════════════════════════════════════════════════
+   QUICK ADD
+   Optimistic +1 with 5s deferred commit and undo.
+   Rapid taps coalesce into one network request.
+   ═══════════════════════════════════════════════════════ */
 
-  // Snapshot the original state on the first tap of a new batch
+let _qaOrig  = null; // snapshot before this batch
+let _qaTarget = 0;   // optimistic drink count
+let _qaTimer  = null;
+
+function initQuickAdd() {
+  $id('btn-qa').addEventListener('click', handleQA);
+}
+
+function handleQA() {
+  const ts  = today();
+  const ex  = S.map.get(ts);
+
   if (_qaTimer === null) {
-    _qaOriginal = existing
-      ? { drinks: existing.drinks, note: existing.note || '', id: existing.id || '' }
-      : null;
+    _qaOrig = ex ? { ...ex } : null;
   }
 
   clearTimeout(_qaTimer);
-  _qaTarget = (S.map.get(today)?.drinks ?? 0) + 1;
+  _qaTarget = (S.map.get(ts)?.drinks ?? 0) + 1;
 
-  // Optimistic update
-  applyLogSave({
-    id:     existing?.id || '',
-    date:   today,
-    drinks: _qaTarget,
-    note:   existing?.note || '',
-  });
-  renderCurrentView();
+  applyLogSave({ id: ex?.id || '', date: ts, drinks: _qaTarget, note: ex?.note || '' });
 
-  const label = _qaTarget === 1 ? '1 drink today' : `${_qaTarget} drinks today`;
+  // Refresh just the today cell if graph is visible; otherwise full render
+  if (S.view === 'graph' && S.graphMode === 'scroll') {
+    patchCell(ts);
+  } else {
+    renderView();
+  }
+
+  const label = `+1 · ${_qaTarget} today`;
   showToast(label, () => {
-    clearTimeout(_qaTimer);
-    _qaTimer = null;
-    const t = todayStr();
-    if (_qaOriginal === null) applyLogDelete(t);
-    else applyLogSave({ id: _qaOriginal.id, date: t, drinks: _qaOriginal.drinks, note: _qaOriginal.note });
-    _qaOriginal = null;
-    renderCurrentView();
+    clearTimeout(_qaTimer); _qaTimer = null;
+    const t = today();
+    if (_qaOrig === null) applyLogDelete(t);
+    else applyLogSave(_qaOrig);
+    if (S.view === 'graph' && S.graphMode === 'scroll') patchCell(t);
+    else renderView();
   });
 
-  _qaTimer = setTimeout(() => { _qaTimer = null; _commitQuickAdd(); }, 5000);
+  _qaTimer = setTimeout(() => { _qaTimer = null; _commitQA(); }, 5000);
 }
 
-async function _commitQuickAdd() {
+async function _commitQA() {
   _qaTimer = null;
-  $id('quickadd-toast').hidden = true;
-
-  const today = todayStr();
-  const note  = S.map.get(today)?.note || '';
-
+  $id('toast').hidden = true;
+  const ts   = today();
+  const note = S.map.get(ts)?.note || '';
   try {
-    const saved = await api.post('/api/logs', { date: today, drinks: _qaTarget, note });
+    const saved = await api.post('/api/logs', { date: ts, drinks: _qaTarget, note });
     applyLogSave(saved);
-    renderCurrentView();
+    if (S.view === 'graph' && S.graphMode === 'scroll') patchCell(ts);
+    else renderView();
     refreshStats();
   } catch {
-    // Revert on failure
-    if (_qaOriginal === null) {
-      applyLogDelete(today);
-    } else {
-      applyLogSave({ id: _qaOriginal.id, date: today, drinks: _qaOriginal.drinks, note: _qaOriginal.note });
-    }
-    renderCurrentView();
+    // Revert
+    if (_qaOrig === null) applyLogDelete(ts);
+    else applyLogSave(_qaOrig);
+    if (S.view === 'graph' && S.graphMode === 'scroll') patchCell(ts);
+    else renderView();
   }
-  _qaOriginal = null;
+  _qaOrig = null;
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════
    DELETE ACCOUNT
-   ═══════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════ */
 
 function initDeleteAccount() {
-  $id('btn-delete-account').addEventListener('click', async () => {
+  $id('btn-del-acct').addEventListener('click', async () => {
     if (!confirm('Delete your account and all logs permanently?\nThis cannot be undone.')) return;
     try {
       await api.del('/api/account');
       S.user = null; S.logs = []; S.stats = null; S.map.clear();
       showAuth();
-    } catch (err) {
-      alert('Error: ' + err.message);
-    }
+    } catch (err) { alert('Error: ' + err.message); }
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════
    INIT
-   ═══════════════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════ */
 
 function init() {
-  initAuthForms();
-  initLogout();
-  initViewTabs();
+  initAuth();
+  initViewNav();
   initMonthNav();
-  initModal();
+  initToast();
   initQuickAdd();
   initDeleteAccount();
   checkAuth();
