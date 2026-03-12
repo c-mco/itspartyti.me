@@ -2,120 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>itspartyti.me</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
 
-  <!-- AUTH -->
   <div id="auth" hidden>
     <div class="auth-box">
-      <div class="auth-brand">
-        <h1>itspartyti.me</h1>
-        <p>your drinks, honestly</p>
-      </div>
+      <h1>itspartyti.me</h1>
+      <p class="tagline">your drinks, honestly</p>
       <form id="auth-form" novalidate>
-        <div class="field">
-          <label for="f-user">username</label>
-          <input id="f-user" type="text" autocomplete="username" required spellcheck="false" />
-        </div>
-        <div class="field">
-          <label for="f-pass">password</label>
-          <input id="f-pass" type="password" autocomplete="current-password" required />
-        </div>
-        <div id="auth-err" class="form-err" role="alert" aria-live="polite"></div>
-        <button type="submit" id="auth-submit" class="btn-primary">log in</button>
+        <input id="f-user" type="text" placeholder="username" autocomplete="username" spellcheck="false" required />
+        <input id="f-pass" type="password" placeholder="password" autocomplete="current-password" required />
+        <p id="auth-err" class="err" role="alert" aria-live="polite"></p>
+        <button type="submit" id="auth-btn">log in</button>
       </form>
-      <button id="auth-toggle" class="auth-switch-btn">don't have an account? register →</button>
+      <button id="auth-toggle" class="link-btn">no account? register →</button>
     </div>
   </div>
 
-  <!-- APP -->
   <div id="app" hidden>
 
     <header class="hdr">
-      <span class="hdr-brand">itspartyti.me</span>
-      <div class="hdr-end">
-        <span id="hdr-user" class="hdr-user"></span>
-        <button id="btn-logout" class="btn-ghost sm">logout</button>
+      <span class="logo">itspartyti.me</span>
+      <div class="hdr-right">
+        <button class="user-btn" id="user-btn" aria-expanded="false" aria-haspopup="true">
+          <span id="hdr-name"></span>
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+        </button>
+        <div class="user-menu" id="user-menu" hidden role="menu">
+          <button id="btn-logout" role="menuitem">log out</button>
+          <button id="btn-del" class="danger" role="menuitem">delete account</button>
+        </div>
       </div>
     </header>
 
-    <nav class="viewnav" role="tablist" aria-label="View">
-      <button class="vtab is-active" role="tab" aria-selected="true"  data-view="graph">graph</button>
-      <button class="vtab"           role="tab" aria-selected="false" data-view="month">month</button>
-      <button class="vtab"           role="tab" aria-selected="false" data-view="river">river</button>
+    <div class="today">
+      <span class="today-date" id="today-date"></span>
+      <div class="stepper">
+        <button class="step-btn" id="btn-minus" aria-label="Remove one drink">−</button>
+        <span class="step-val" id="today-n">0</span>
+        <button class="step-btn" id="btn-plus" aria-label="Add one drink">+</button>
+      </div>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat"><b id="s-week">—</b><span>week</span></div>
+      <div class="stat"><b id="s-month">—</b><span>month</span></div>
+      <div class="stat"><b id="s-all">—</b><span>all time</span></div>
+      <div class="stat"><b id="s-streak">—</b><span>streak</span></div>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab active" data-view="graph">graph</button>
+      <button class="tab" data-view="feed">feed</button>
     </nav>
 
-    <main class="panels">
-
-      <!-- GRAPH PANEL -->
-      <section id="panel-graph" class="panel">
-        <div id="graph-ctrl" class="panel-ctrl"></div>
-        <div id="graph-mount"></div>
-        <div class="legend">
-          <span class="leg sober"></span>
-          <span class="leg light"></span>
-          <span class="leg moderate"></span>
-          <span class="leg heavy"></span>
-          <span class="leg none"></span>
-          <span class="leg-txt">0 · 1–2 · 3–4 · 5+ · —</span>
-        </div>
-      </section>
-
-      <!-- MONTH PANEL -->
-      <section id="panel-month" class="panel" hidden>
-        <div class="panel-ctrl">
-          <button class="btn-ghost sm" id="btn-mo-prev" aria-label="Previous month">←</button>
-          <span class="panel-title" id="mo-label"></span>
-          <button class="btn-ghost sm" id="btn-mo-next" aria-label="Next month">→</button>
-        </div>
-        <div id="mo-grid" class="mo-grid" role="grid" aria-label="Monthly calendar"></div>
-      </section>
-
-      <!-- RIVER PANEL -->
-      <section id="panel-river" class="panel" hidden>
-        <div class="river-outer">
-          <div class="river-y" id="river-y"></div>
-          <div class="river-scroll" id="river-scroll" tabindex="0" aria-label="Drink timeline">
-            <div class="river-bars" id="river-bars"></div>
-            <div class="river-months" id="river-months"></div>
-          </div>
-        </div>
-      </section>
-
-    </main>
-
-    <!-- STATS -->
-    <div class="stats-row" aria-label="Stats">
-      <div class="stat"><span class="stat-n" id="s-week">—</span><span class="stat-l">week</span></div>
-      <div class="stat"><span class="stat-n" id="s-month">—</span><span class="stat-l">month</span></div>
-      <div class="stat"><span class="stat-n" id="s-all">—</span><span class="stat-l">all time</span></div>
-      <div class="stat"><span class="stat-n" id="s-streak">—</span><span class="stat-l">streak · best <span id="s-best">—</span></span></div>
-      <div class="stat"><span class="stat-n" id="s-avg">—</span><span class="stat-l">avg/day</span></div>
-      <div class="stat"><span class="stat-n" id="s-sober">—</span><span class="stat-l">sober %</span></div>
-    </div>
-
-    <!-- ACCOUNT -->
-    <details class="acct">
-      <summary>account</summary>
-      <div class="acct-body">
-        <p>Permanently delete your account and all data. This cannot be undone.</p>
-        <button class="btn-danger" id="btn-del-acct">delete account</button>
+    <div id="view-graph" class="view">
+      <div class="day-hdrs">
+        <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
       </div>
-    </details>
-
-    <!-- QUICK ADD -->
-    <button class="qadd-btn" id="btn-qa" aria-label="Add one drink to today">+1</button>
-
-    <!-- TOAST -->
-    <div class="toast" id="toast" hidden role="status" aria-live="polite">
-      <span id="toast-msg" class="toast-msg"></span>
-      <button class="toast-undo" id="toast-undo" type="button">undo</button>
+      <div class="graph-wrap">
+        <div class="graph" id="graph"></div>
+        <div class="cell-panel" id="cell-panel" hidden>
+          <div class="cp-date" id="cp-date"></div>
+          <div class="stepper">
+            <button class="step-btn" id="cp-minus">−</button>
+            <span class="step-val" id="cp-n">0</span>
+            <button class="step-btn" id="cp-plus">+</button>
+          </div>
+          <textarea class="cp-note" id="cp-note" placeholder="note…" rows="2"></textarea>
+          <button class="cp-del" id="cp-del">delete entry</button>
+        </div>
+      </div>
     </div>
 
-  </div><!-- /app -->
+    <div id="view-feed" class="view" hidden>
+      <div class="feed" id="feed"></div>
+    </div>
+
+  </div>
 
   <script src="/app.js"></script>
 </body>
