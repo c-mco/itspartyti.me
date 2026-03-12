@@ -874,12 +874,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
    ═══════════════════════════════════════════════════════════════ */
 /* ── Small phones ── */
 @media (max-width: 400px) {
-  .year-grid {
-    --cw:  24px;
-    --ch:  16px;
-    --cg:  1px;
-    --dlw: 18px;
-  }
   .sstat { min-width: 60px; padding: 0.65rem 0.35rem; }
   .sstat-n { font-size: 1.1rem; }
   .sstat-l { font-size: 0.55rem; }
@@ -891,40 +885,306 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Desktop: give the layout room to breathe ── */
 @media (min-width: 600px) {
-  .view-area {
-    padding: 1.75rem 2.5rem 1rem;
-  }
-
-  /* Year grid: larger cells so the heatmap fills the space */
-  .year-grid {
-    --cw:  38px;
-    --ch:  22px;
-    --cg:  3px;
-    --dlw: 26px;
-  }
-
-  /* Month grid: comfortable width, centred */
-  #panel-month {
-    max-width: 520px;
-    margin-inline: auto;
-  }
+  .view-area { padding: 1.75rem 2.5rem 1rem; }
+  #panel-month { max-width: 520px; margin-inline: auto; }
 }
 
 @media (min-width: 900px) {
-  .view-area {
-    max-width: 1100px;
-    margin-inline: auto;
-    padding-inline: 3rem;
-  }
-
-  /* Even larger year cells on wide screens */
-  .year-grid {
-    --cw:  48px;
-    --ch:  27px;
-  }
-
-  /* Month grid gets a touch more room */
-  #panel-month {
-    max-width: 580px;
-  }
+  .view-area { max-width: 1100px; margin-inline: auto; padding-inline: 3rem; }
+  #panel-month { max-width: 580px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMMIT GRAPH — shared cell colours
+   ═══════════════════════════════════════════════════════════════ */
+.cg-cell {
+  background: var(--c-none);
+  border-radius: 0;
+  cursor: pointer;
+  transition: filter 0.07s;
+  user-select: none;
+}
+.cg-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cg-cell.sober    { background: var(--c-sober);    }
+.cg-cell.light    { background: var(--c-light);    }
+.cg-cell.moderate { background: var(--c-moderate); }
+.cg-cell.heavy    { background: var(--c-heavy);    }
+.cg-cell.future   { opacity: 0.25; cursor: default; pointer-events: none; }
+.cg-cell.is-today { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMMIT GRAPH — OVERVIEW MODE
+   All 52 weeks compressed into the container width.
+   ═══════════════════════════════════════════════════════════════ */
+.cg-overview { user-select: none; }
+
+/* Month labels row */
+.cg-ov-month-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  margin-bottom: 3px;
+}
+.cg-ov-dow-spacer {
+  width: 20px;
+  flex-shrink: 0;
+}
+.cg-ov-months {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  gap: 2px;
+}
+.cg-ov-month-lbl {
+  flex: 1;
+  font-size: 0.55rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 1;
+}
+
+/* Body: DOW labels + grid */
+.cg-ov-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+.cg-ov-dow-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 20px;
+  flex-shrink: 0;
+}
+.cg-ov-dow-lbl {
+  flex: 1;
+  font-size: 0.55rem;
+  color: var(--text-3);
+  text-align: right;
+  padding-right: 3px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.cg-ov-weeks {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  flex: 1;
+}
+.cg-ov-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.cg-ov-col .cg-cell {
+  flex: 1;
+  width: 100%;
+  min-height: 6px;
+}
+.cg-ov-col .cg-cell:hover:not(.future) { filter: brightness(1.6); }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMMIT GRAPH — SCROLL MODE
+   Pannable, larger cells (28px sq), fisheye zoom.
+   ═══════════════════════════════════════════════════════════════ */
+.cg-scroll-wrap { user-select: none; }
+
+.cg-sc-body {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+/* Fixed DOW label column */
+.cg-sc-dow-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 26px;
+}
+.cg-sc-dow-spacer {
+  height: 21px; /* matches month label row: 18px + 3px gap */
+  flex-shrink: 0;
+}
+.cg-sc-dow-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cg-sc-dow-lbl {
+  height: 28px;
+  font-size: 0.58rem;
+  color: var(--text-3);
+  text-align: right;
+  padding-right: 4px;
+  line-height: 28px;
+  white-space: nowrap;
+}
+
+/* Scrollable outer container */
+.cg-sc-outer {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  cursor: grab;
+  /* fade edges */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0px, black 6px,
+    black calc(100% - 6px), transparent 100%
+  );
+}
+.cg-sc-outer:active { cursor: grabbing; }
+
+/* Inner: 52 week columns side by side */
+.cg-sc-inner {
+  display: flex;
+  flex-direction: row;
+  gap: 3px;
+  align-items: flex-start;
+  padding-bottom: 4px; /* breathing room below cells */
+}
+
+/* Each week column */
+.cg-sc-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  width: 28px;
+  min-width: 28px;
+  /* smooth width transitions for fisheye */
+  transition: width 0.05s ease-out, min-width 0.05s ease-out;
+}
+
+/* Month label inside each column (at the top) */
+.cg-sc-month-lbl {
+  height: 18px;
+  font-size: 0.6rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 18px;
+  pointer-events: none;
+}
+
+/* Scroll-mode cells */
+.cg-sc-col .cg-cell {
+  width: 100%;
+  height: 28px;
+  transition: height 0.05s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+.cg-sc-col .cg-cell:hover:not(.future) { filter: brightness(1.4); }
+
+/* Cell inner content (date number, drink count, note) */
+.cg-cell-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+  padding: 2px;
+  text-align: center;
+}
+.cg-cell-day {
+  font-size: 0.52rem;
+  color: rgba(255,255,255,0.5);
+  line-height: 1;
+}
+.cg-cell-count {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255,255,255,0.9);
+}
+.cg-cell-note {
+  font-size: 0.48rem;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.2;
+  overflow: hidden;
+  max-width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* On sober (green bg), adjust text colours */
+.cg-cell.sober .cg-cell-count { color: var(--c-sober-fg); }
+.cg-cell.none  .cg-cell-count { color: var(--text-2); }
+
+/* ═══════════════════════════════════════════════════════════════
+   INLINE CELL EDITOR CARD
+   ═══════════════════════════════════════════════════════════════ */
+.cg-edit-card {
+  position: fixed;
+  z-index: 80;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: min(340px, 80dvh);
+  overflow: hidden;
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.65);
+  /* Animate in */
+  animation: cg-card-in 0.12s ease-out;
+}
+@keyframes cg-card-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+.cg-edit-hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cg-edit-date {
+  font-size: 0.75rem;
+  color: var(--text-2);
+  line-height: 1.4;
+  flex: 1;
+}
+.cg-edit-close {
+  flex-shrink: 0;
+}
+.cg-edit-count {
+  text-align: center;
+  width: 64px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  padding: 0.25rem 0.35rem;
+}
+.cg-edit-note {
+  resize: none;
+  overflow-y: auto;
+  max-height: 90px;
+  min-height: 46px;
+  font-size: 0.85rem;
+}
+.cg-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.cg-edit-delete {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.cg-edit-delete:hover { background: var(--danger); color: #fff; border-color: var(--danger); }

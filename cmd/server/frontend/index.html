@@ -84,7 +84,7 @@
 
       <!-- View selector tabs -->
       <nav class="view-nav" role="tablist" aria-label="View">
-        <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Year</button>
+        <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Graph</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="river">River</button>
         <button class="view-tab"        role="tab" aria-selected="false" data-view="month">Month</button>
       </nav>
@@ -92,18 +92,12 @@
       <!-- ─── VIEW PANELS ─────────────────────────────── -->
       <main class="view-area">
 
-        <!-- YEAR GRID -->
-        <section id="panel-year" class="view-panel" aria-label="Year grid">
-          <div class="panel-controls">
-            <button id="btn-year-prev" class="icon-btn" aria-label="Previous year">←</button>
-            <span   id="year-label"   class="panel-title"></span>
-            <button id="btn-year-next" class="icon-btn" aria-label="Next year">→</button>
+        <!-- COMMIT GRAPH -->
+        <section id="panel-year" class="view-panel" aria-label="Commit graph">
+          <div class="panel-controls" id="cg-controls">
+            <!-- populated by JS: empty in overview, ← overview button in scroll mode -->
           </div>
-          <!-- grid is built by JS; scrollable wrapper handles mobile -->
-          <div class="year-scroll-outer" id="year-scroll-outer">
-            <div id="year-grid" class="year-grid" role="grid"
-                 aria-label="Yearly drink heatmap. Columns are months, rows are days."></div>
-          </div>
+          <div id="cg-mount"></div>
           <div class="legend" aria-label="Colour scale">
             <span class="leg-swatch sober"    title="0 drinks"   ></span>
             <span class="leg-swatch light"    title="1–2 drinks" ></span>
@@ -238,9 +232,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Mobile loupe for year grid -->
-  <div id="loupe" class="loupe" hidden aria-hidden="true"></div>
 
   <script src="/app.js"></script>
 </body>

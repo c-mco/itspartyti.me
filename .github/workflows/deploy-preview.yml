@@ -1,0 +1,53 @@
+name: deploy preview
+
+on:
+  push:
+    branches: [commit-graph]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: test
+        run: go test ./...
+
+      - name: build
+        run: |
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build \
+            -ldflags "-X main.version=$(git rev-parse --short HEAD)-preview" \
+            -o server \
+            ./cmd/server
+
+      - name: copy binary
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: 2222
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          source: server
+          target: ~/itspartyti.me-preview/
+
+      - name: restart and verify
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: 2222
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            chmod +x ~/itspartyti.me-preview/server
+            # Load the plist if not already loaded, then restart
+            launchctl load ~/Library/LaunchAgents/me.itspartyti.preview.plist 2>/dev/null || true
+            launchctl kickstart -k gui/$(id -u)/me.itspartyti.preview
+            sleep 2
+            HEALTH=$(curl -sf http://localhost:8091/health) || (echo "health check failed" && exit 1)
+            echo "preview deployed: $HEALTH"
