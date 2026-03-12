@@ -90,6 +90,7 @@ function showAuth() {
 function showApp() {
   $('auth').hidden = true;
   $('app').hidden = false;
+  window.scrollTo(0, 0);
   $('hdr-name').textContent = S.user;
   renderToday();
   renderStats();

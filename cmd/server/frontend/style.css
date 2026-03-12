@@ -35,7 +35,7 @@ body {
 }
 
 /* ── Auth ─────────────────────────────────────────────── */
-#auth {
+.auth-page {
   min-height: 100dvh;
   display: flex;
   align-items: center;
