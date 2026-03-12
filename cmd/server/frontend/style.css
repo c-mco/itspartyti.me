@@ -2,7 +2,7 @@
 
 :root {
   --bg:  #0c0c16;
-  --sur: #13131e;
+  --sur: #1a1a2a;
   --bdr: #21212e;
   --t1:  #dcdcec;
   --t2:  #5c5c80;
@@ -147,6 +147,7 @@ button[type="submit"]:active { opacity: 0.85; }
 .user-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 .user-menu {
+  display: none;
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
@@ -154,8 +155,10 @@ button[type="submit"]:active { opacity: 0.85; }
   border: 1px solid var(--bdr);
   min-width: 148px;
   z-index: 40;
-  display: flex;
   flex-direction: column;
+}
+.user-menu.is-open {
+  display: flex;
 }
 .user-menu button {
   background: none;
@@ -314,16 +317,19 @@ button[type="submit"]:active { opacity: 0.85; }
 
 /* ── Cell panel ───────────────────────────────────────── */
 .cell-panel {
+  display: none;
   position: absolute;
   background: var(--sur);
   border: 1px solid var(--bdr);
   padding: 12px;
   width: 200px;
   z-index: 20;
-  display: flex;
   flex-direction: column;
   gap: 10px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.cell-panel.is-open {
+  display: flex;
 }
 .cp-date {
   font-family: var(--mono);
@@ -392,10 +398,13 @@ button[type="submit"]:active { opacity: 0.85; }
 .feed-count[data-level="3"] { color: var(--fg3); }
 
 .feed-body {
+  display: none;
   padding: 4px 16px 14px;
-  display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.feed-body.is-open {
+  display: flex;
 }
 .feed-body textarea {
   font-size: 14px;

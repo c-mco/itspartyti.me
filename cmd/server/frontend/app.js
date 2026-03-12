@@ -126,13 +126,12 @@ $('auth-toggle').addEventListener('click', () => {
 // ── Header / Account ─────────────────────────────────────
 $('user-btn').addEventListener('click', e => {
   e.stopPropagation();
-  const open = !$('user-menu').hidden;
-  $('user-menu').hidden = open;
-  $('user-btn').setAttribute('aria-expanded', String(!open));
+  const open = $('user-menu').classList.toggle('is-open');
+  $('user-btn').setAttribute('aria-expanded', String(open));
 });
 
 document.addEventListener('click', () => {
-  $('user-menu').hidden = true;
+  $('user-menu').classList.remove('is-open');
   $('user-btn').setAttribute('aria-expanded', 'false');
 });
 
@@ -395,7 +394,7 @@ function openPanel(el) {
   $('cp-note').value          = log ? (log.note || '') : '';
 
   const panel = $('cell-panel');
-  panel.hidden = false;
+  panel.classList.add('is-open');
 
   // Position relative to .graph-wrap
   const wrap     = panel.parentElement;
@@ -419,7 +418,7 @@ function openPanel(el) {
 
 async function closePanel(save = true) {
   const panel = $('cell-panel');
-  if (panel.hidden || !_panelDate) return;
+  if (!panel.classList.contains('is-open') || !_panelDate) return;
 
   if (save) {
     const drinks = parseInt($('cp-n').textContent, 10) || 0;
@@ -427,7 +426,7 @@ async function closePanel(save = true) {
     await saveDayEntry(_panelDate, drinks, note);
   }
 
-  panel.hidden = true;
+  panel.classList.remove('is-open');
   grid.querySelector('.is-focus')?.classList.remove('is-focus');
   _panelDate = null;
 }
@@ -465,7 +464,7 @@ $('cp-plus').addEventListener('click', () => {
 $('cp-del').addEventListener('click', async () => {
   if (!_panelDate) return;
   const iso = _panelDate;
-  $('cell-panel').hidden = true;
+  $('cell-panel').classList.remove('is-open');
   grid.querySelector('.is-focus')?.classList.remove('is-focus');
   _panelDate = null;
   S.logs.delete(iso);
@@ -478,7 +477,7 @@ $('cp-del').addEventListener('click', async () => {
 
 // Close panel on outside click
 document.addEventListener('click', e => {
-  if ($('cell-panel').hidden) return;
+  if (!$('cell-panel').classList.contains('is-open')) return;
   if (!$('cell-panel').contains(e.target) && !e.target.closest('.gc')) {
     closePanel(true);
   }
@@ -506,7 +505,7 @@ function makeFeedItem(iso, log) {
       <span class="feed-preview">${log.note || ''}</span>
       <span class="feed-count" data-level="${lv}">${log.drinks}</span>
     </div>
-    <div class="feed-body" hidden>
+    <div class="feed-body">
       <div class="stepper">
         <button class="step-btn f-minus">−</button>
         <span class="step-val f-n">${log.drinks}</span>
@@ -545,9 +544,9 @@ function makeFeedItem(iso, log) {
 async function toggleFeedItem(item, iso) {
   const body = item.querySelector('.feed-body');
 
-  if (!body.hidden) {
+  if (body.classList.contains('is-open')) {
     await saveFeedItem(item, iso);
-    body.hidden = true;
+    body.classList.remove('is-open');
     _feedOpen = null;
     return;
   }
@@ -555,10 +554,10 @@ async function toggleFeedItem(item, iso) {
   if (_feedOpen) {
     const prev = _feedOpen;
     await saveFeedItem(prev, prev.dataset.date);
-    prev.querySelector('.feed-body').hidden = true;
+    prev.querySelector('.feed-body').classList.remove('is-open');
   }
 
-  body.hidden = false;
+  body.classList.add('is-open');
   _feedOpen = item;
 }
 
