@@ -1,4 +1,4 @@
-.PHONY: run build test logs-setup
+.PHONY: run build test test-js test-all logs-setup
 
 VERSION := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
@@ -10,6 +10,11 @@ build:
 
 test:
 	go test ./...
+
+test-js:
+	node cmd/server/frontend/app.test.mjs
+
+test-all: test test-js
 
 logs-setup:
 	sudo cp deploy/newsyslog.conf /etc/newsyslog.d/itspartyti.me.conf
