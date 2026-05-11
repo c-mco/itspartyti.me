@@ -2,84 +2,288 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="light dark" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>itspartyti.me</title>
   <link rel="stylesheet" href="/style.css" />
+  <noscript><style>.app{display:none}.noscript{display:block!important}</style></noscript>
 </head>
-<body data-layout="A">
-  <a class="skip-link" href="#grid">Skip to grid</a>
+<body>
 
-  <header class="topbar">
-    <p class="brand" aria-label="itspartyti.me">itspartyti.me</p>
-    <button
-      class="avatar"
-      type="button"
-      aria-label="Open account and settings"
-      aria-haspopup="dialog"
-      aria-expanded="false"
-      data-avatar
-    >
-      <span aria-hidden="true" data-avatar-initial>·</span>
-    </button>
-  </header>
+  <div class="noscript" style="display:none">
+    <h1>JavaScript required</h1>
+    <p>itspartyti.me needs JavaScript. Enable it in your browser to continue.</p>
+  </div>
 
-  <main class="app">
-    <p class="last-logged" data-last-logged>last logged —</p>
+  <div class="app" id="app">
 
-    <section
-      id="grid"
-      class="grid-wrap"
-      aria-labelledby="grid-heading"
-      tabindex="-1"
-    >
-      <h1 id="grid-heading" class="visually-hidden">Your drinks, day by day</h1>
+    <!-- ═══════════════════════════════════════════
+         AUTH SCREEN
+         ═══════════════════════════════════════════ -->
+    <div id="auth-screen" hidden>
+      <div class="auth-wrap">
+        <h1 class="brand">itspartyti.me</h1>
+        <p class="brand-sub">your drinks, honestly</p>
 
-      <div
-        class="grid"
-        data-grid
-        data-orientation="horizontal"
-        data-range="year"
-        aria-label="Drinks logged per day, last 52 weeks"
-      >
-        <!-- dots are rendered by app.js -->
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" role="tab" aria-selected="true"
+                  data-tab="login" aria-controls="panel-login">login</button>
+          <button class="auth-tab" role="tab" aria-selected="false"
+                  data-tab="register" aria-controls="panel-register">register</button>
+        </div>
+
+        <div id="panel-login" role="tabpanel">
+          <form id="form-login" novalidate>
+            <div class="field">
+              <label for="login-user">email</label>
+              <input id="login-user" type="email" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label for="login-pass">password</label>
+              <input id="login-pass" type="password" autocomplete="current-password" required />
+            </div>
+            <div id="err-login" class="form-err" role="alert" aria-live="polite"></div>
+            <button type="submit" class="btn-primary w-full">log in</button>
+          </form>
+        </div>
+
+        <div id="panel-register" role="tabpanel" hidden>
+          <form id="form-register" novalidate>
+            <div class="field">
+              <label for="reg-email">email</label>
+              <input id="reg-email" type="email" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label for="reg-name">name
+                <span class="hint">optional · shown instead of email</span>
+              </label>
+              <input id="reg-name" type="text" autocomplete="name" maxlength="64" />
+            </div>
+            <div class="field">
+              <label for="reg-pass">password
+                <span class="hint">min 8 characters</span>
+              </label>
+              <input id="reg-pass" type="password" autocomplete="new-password"
+                     required minlength="8" />
+            </div>
+            <div id="err-register" class="form-err" role="alert" aria-live="polite"></div>
+            <button type="submit" class="btn-primary w-full">create account</button>
+          </form>
+        </div>
       </div>
-
-      <div class="grid-footer" data-grid-footer hidden>
-        <button type="button" class="see-more" data-see-more>
-          See more — show the full year
-        </button>
-      </div>
-    </section>
-
-    <div class="quick-add">
-      <button
-        type="button"
-        class="quick-add-btn"
-        data-quick-add
-        aria-label="Log one drink for today"
-      >
-        <span aria-hidden="true">+1 today</span>
-      </button>
     </div>
 
-    <button
-      type="button"
-      class="fab"
-      data-fab
-      aria-label="Log one drink for today"
-    >
-      <span aria-hidden="true">+1</span>
-    </button>
+    <!-- ═══════════════════════════════════════════
+         MAIN APP
+         ═══════════════════════════════════════════ -->
+    <div id="main-screen" hidden>
 
-    <div
-      class="live"
-      role="status"
-      aria-live="polite"
-      data-live
-    ></div>
-  </main>
+      <header class="header">
+        <span class="header-brand">itspartyti.me</span>
+        <div class="header-right">
+          <button id="btn-account-toggle" class="btn-ghost header-account-btn"></button>
+          <button id="btn-logout" class="btn-ghost">logout</button>
+        </div>
+      </header>
 
-  <script src="/app.js" type="module"></script>
+      <!-- Stats strip — always visible above view tabs -->
+      <div class="stats-strip" aria-label="Statistics">
+        <div class="sstat">
+          <span class="sstat-n" id="st-week">—</span>
+          <span class="sstat-l">this week</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-month">—</span>
+          <span class="sstat-l">this month</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-all">—</span>
+          <span class="sstat-l">all time</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-streak">—</span>
+          <span class="sstat-l">sober streak</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-best">—</span>
+          <span class="sstat-l">longest</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-avg">—</span>
+          <span class="sstat-l">avg per session</span>
+        </div>
+        <div class="sstat">
+          <span class="sstat-n" id="st-sober">—</span>
+          <span class="sstat-l">dry days</span>
+        </div>
+      </div>
+
+      <!-- View selector tabs -->
+      <nav class="view-nav" role="tablist" aria-label="View">
+        <button class="view-tab active" role="tab" aria-selected="true"  data-view="year">Year</button>
+        <button class="view-tab"        role="tab" aria-selected="false" data-view="river">River</button>
+        <button class="view-tab"        role="tab" aria-selected="false" data-view="journal">Journal</button>
+      </nav>
+
+      <!-- ─── VIEW PANELS ─────────────────────────────── -->
+      <main class="view-area">
+
+        <!-- YEAR GRID -->
+        <section id="panel-year" class="view-panel" aria-label="Year grid">
+          <div class="panel-controls">
+            <button id="btn-year-prev"      class="icon-btn" aria-label="Previous year">←</button>
+            <span   id="year-label"         class="panel-title"></span>
+            <button id="btn-year-next"      class="icon-btn" aria-label="Next year">→</button>
+            <button id="btn-year-today"     class="icon-btn" hidden>today</button>
+          </div>
+          <!-- grid is built by JS; scrollable wrapper handles mobile -->
+          <div class="year-scroll-outer" id="year-scroll-outer">
+            <div id="year-grid" class="year-grid" role="grid"></div>
+          </div>
+          <div class="legend" aria-label="Colour scale">
+            <span class="leg-swatch sober"    title="0 drinks"   ></span>
+            <span class="leg-swatch light"    title="1–2 drinks" ></span>
+            <span class="leg-swatch moderate" title="3–4 drinks" ></span>
+            <span class="leg-swatch heavy"    title="5+ drinks"  ></span>
+            <span class="leg-swatch none"     title="not logged" ></span>
+            <span class="leg-text">0 · 1–2 · 3–4 · 5+ · —</span>
+          </div>
+        </section>
+
+        <!-- TIMELINE RIVER -->
+        <section id="panel-river" class="view-panel" aria-label="Timeline river" hidden>
+          <div class="river-outer">
+            <!-- Y axis: stays fixed while bars scroll -->
+            <div class="river-y-axis" id="river-y" aria-hidden="true"></div>
+            <!-- Scrollable chart area -->
+            <div class="river-scroll" id="river-scroll"
+                 tabindex="0" aria-label="Scrollable year timeline. Each bar is one day.">
+              <div id="river-bars"  class="river-bars"  role="img" aria-label="Daily drink bars"></div>
+              <div id="river-months" class="river-months" aria-hidden="true"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- JOURNAL / DIARY -->
+        <section id="panel-journal" class="view-panel" aria-label="Journal" hidden>
+          <div id="journal-list" class="journal-list">
+            <!-- entries injected by JS -->
+          </div>
+        </section>
+
+      </main>
+
+      <!-- ─── QUICK-ADD ──────────────────────────────────────── -->
+      <button id="btn-quickadd" class="quickadd-btn" type="button" aria-label="Add one drink">+1</button>
+
+      <div id="quickadd-toast" class="quickadd-toast" role="status" aria-live="polite" hidden>
+        <span id="quickadd-toast-msg" class="quickadd-toast-msg"></span>
+        <button id="btn-quickadd-undo" class="quickadd-undo-btn" type="button">undo</button>
+      </div>
+
+    </div><!-- /main-screen -->
+  </div><!-- /app -->
+
+  <!-- ═══════════════════════════════════════════
+       ACCOUNT SCREEN (full-screen overlay)
+       ═══════════════════════════════════════════ -->
+  <div id="account-screen" class="account-screen" hidden aria-label="Account settings">
+    <header class="account-screen-hdr">
+      <button id="btn-account-back" class="icon-btn" aria-label="Back">←</button>
+      <span class="account-screen-title">account</span>
+    </header>
+    <div class="account-screen-body">
+
+      <section class="account-section">
+        <h3 class="account-section-title">profile</h3>
+        <div class="field">
+          <label for="acc-email">email</label>
+          <input id="acc-email" type="email" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="acc-name">name
+            <span class="hint">shown instead of email</span>
+          </label>
+          <input id="acc-name" type="text" autocomplete="name" maxlength="64" placeholder="optional" />
+        </div>
+        <div id="err-profile" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-save-profile" class="btn-primary">save profile</button>
+      </section>
+
+      <section class="account-section">
+        <h3 class="account-section-title">change password</h3>
+        <div class="field">
+          <label for="acc-cur-pass">current password</label>
+          <input id="acc-cur-pass" type="password" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="acc-new-pass">new password
+            <span class="hint">min 8 characters</span>
+          </label>
+          <input id="acc-new-pass" type="password" autocomplete="new-password" minlength="8" />
+        </div>
+        <div id="err-password" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-change-password" class="btn-primary">update password</button>
+      </section>
+
+      <section class="account-section account-danger-zone">
+        <h3 class="account-section-title">danger zone</h3>
+        <p class="account-danger-desc">Permanently delete your account and all logs. Cannot be undone.</p>
+        <div id="err-delete-account" class="form-err" role="alert" aria-live="polite"></div>
+        <button id="btn-delete-account" class="btn-danger">delete account</button>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       LOG MODAL
+       ═══════════════════════════════════════════ -->
+  <div id="modal" class="modal-overlay" hidden
+       role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+    <div class="modal-box">
+      <div class="modal-top">
+        <div>
+          <p id="modal-date" class="modal-date-str"></p>
+          <h2 id="modal-heading" class="modal-heading">how was it?</h2>
+        </div>
+        <button id="btn-modal-close" class="icon-btn" aria-label="Close modal">✕</button>
+      </div>
+
+      <div class="drink-stepper" role="group" aria-label="Drink count">
+        <button id="btn-dec" class="stepper-btn" type="button" aria-label="Fewer">−</button>
+        <input  id="input-drinks" type="number" min="0" max="100" value="0"
+                aria-label="Number of drinks" />
+        <button id="btn-inc" class="stepper-btn" type="button" aria-label="More">+</button>
+      </div>
+
+      <div class="field">
+        <label for="input-note">note
+          <span class="hint">optional · max 500 chars</span>
+        </label>
+        <textarea id="input-note" rows="3" maxlength="500"
+                  placeholder="what happened? how do you feel about it?"></textarea>
+      </div>
+
+      <div id="modal-err" class="form-err" role="alert" aria-live="polite"></div>
+
+      <div class="modal-actions">
+        <button id="btn-modal-delete" class="btn-ghost" type="button" hidden>delete</button>
+        <div class="modal-actions-r">
+          <button id="btn-modal-cancel" class="btn-ghost" type="button">cancel</button>
+          <button id="btn-modal-save"   class="btn-primary" type="button">save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrub bubble: shows date/drink info while finger scrubs the year grid -->
+  <div id="scrub-bubble" class="scrub-bubble" hidden aria-hidden="true">
+    <span class="scrub-bubble-date"></span>
+    <span class="scrub-bubble-count"></span>
+  </div>
+
+  <div id="journal-scrubber" class="journal-scrubber" hidden aria-hidden="true"></div>
+
+  <script src="/app.js"></script>
 </body>
 </html>
