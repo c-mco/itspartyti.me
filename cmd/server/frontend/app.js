@@ -173,7 +173,6 @@ function renderGrid(gridEl, { orientation, range }, today) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dot';
-    btn.setAttribute('role', 'gridcell');
     btn.dataset.date = iso;
     btn.dataset.bucket = bucketFor(entry);
     btn.dataset.logged = entry.logged ? 'true' : 'false';
@@ -189,6 +188,54 @@ function renderGrid(gridEl, { orientation, range }, today) {
   }
 
   gridEl.replaceChildren(frag);
+  setupRovingTabindex(gridEl);
+}
+
+function setupRovingTabindex(gridEl) {
+  const dots = Array.from(gridEl.querySelectorAll('.dot'));
+  if (!dots.length) return;
+
+  const firstEnabled = dots.findIndex((dot) => !dot.disabled);
+  const todayEnabled = dots.findIndex((dot) => dot.dataset.today === 'true' && !dot.disabled);
+  const activeIndex = todayEnabled >= 0 ? todayEnabled : Math.max(firstEnabled, 0);
+
+  dots.forEach((dot, index) => {
+    dot.tabIndex = index === activeIndex ? 0 : -1;
+  });
+}
+
+function wireGridKeyboard() {
+  const grid = document.querySelector('[data-grid]');
+  if (!grid) return;
+
+  grid.addEventListener('keydown', (event) => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLButtonElement) || !active.classList.contains('dot')) return;
+
+    const dots = Array.from(grid.querySelectorAll('.dot:not(:disabled)'));
+    const currentIndex = dots.indexOf(active);
+    if (currentIndex < 0) return;
+
+    const orientation = grid.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
+    const step = orientation === 'vertical' ? 7 : 1;
+    const rowStep = orientation === 'vertical' ? 1 : 7;
+
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = Math.min(currentIndex + step, dots.length - 1);
+    else if (event.key === 'ArrowLeft') nextIndex = Math.max(currentIndex - step, 0);
+    else if (event.key === 'ArrowDown') nextIndex = Math.min(currentIndex + rowStep, dots.length - 1);
+    else if (event.key === 'ArrowUp') nextIndex = Math.max(currentIndex - rowStep, 0);
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = dots.length - 1;
+    else return;
+
+    event.preventDefault();
+    if (nextIndex === currentIndex) return;
+
+    dots[currentIndex].tabIndex = -1;
+    dots[nextIndex].tabIndex = 0;
+    dots[nextIndex].focus();
+  });
 }
 
 // --- layout switching -----------------------------------------------------
@@ -234,6 +281,7 @@ function wireSeeMore() {
 function boot() {
   applyLayout(pickLayout());
   wireSeeMore();
+  wireGridKeyboard();
 }
 
 if (document.readyState === 'loading') {
