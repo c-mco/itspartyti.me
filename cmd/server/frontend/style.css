@@ -1,0 +1,267 @@
+/* itspartyti.me — skeleton CSS (commit 1)
+ *
+ * This file is intentionally minimal. It exists to:
+ *   - lay out the page (topbar, grid, FAB)
+ *   - give the grid its three orientation/scroll behaviours
+ *   - render a placeholder dot vs. hollow ring so the unlogged-vs-logged-0
+ *     distinction is visible even before the palette pass
+ *
+ * Commit 2 (CSS pass 1) will replace the placeholder palette with the real
+ * traffic-light ramp, light + dark themes, today ring, etc.
+ */
+
+/* ---- reset-ish ---------------------------------------------------------- */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: Canvas;
+  color: CanvasText;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---- a11y helpers ------------------------------------------------------- */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+}
+.skip-link:focus {
+  left: .5rem;
+  top: .5rem;
+  background: Canvas;
+  color: CanvasText;
+  padding: .5rem .75rem;
+  outline: 2px solid CanvasText;
+  z-index: 10;
+}
+
+/* Visually-hidden but polite live region. */
+.live {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* ---- page chrome -------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .75rem 1rem;
+}
+
+.brand {
+  margin: 0;
+  font-size: .9rem;
+  letter-spacing: .01em;
+  opacity: .7;
+}
+
+.avatar {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  min-inline-size: 44px; /* touch target */
+  min-block-size: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+  opacity: .85;
+}
+.avatar:focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; }
+
+.app {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 6rem;
+}
+
+.last-logged {
+  margin: 0;
+  font-size: .85rem;
+  opacity: .6;
+}
+
+/* ---- grid wrapper ------------------------------------------------------- */
+
+.grid-wrap {
+  /* The grid sizes itself; the wrapper just provides scroll context. */
+  --dot-size: 14px;
+  --dot-gap: 4px;
+}
+
+/* The grid is the visualisation. Orientation/range come from data attrs. */
+.grid {
+  --dot-size: 14px;
+  --dot-gap: 4px;
+  display: grid;
+  gap: var(--dot-gap);
+}
+
+/* A — horizontal: 7 rows × N columns (one column per week). */
+.grid[data-orientation="horizontal"] {
+  grid-template-rows: repeat(7, var(--dot-size));
+  grid-auto-flow: column;
+  grid-auto-columns: var(--dot-size);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  padding-block: 2px; /* room for focus rings */
+  /* Anchor to the right so today is visible by default. */
+  direction: ltr;
+}
+
+/* B/C — vertical: 7 columns × N rows. Native vertical scroll. */
+.grid[data-orientation="vertical"] {
+  grid-template-columns: repeat(7, var(--dot-size));
+  grid-auto-rows: var(--dot-size);
+  justify-content: center;
+  /* No overflow — the page scrolls. */
+}
+
+/* ---- dots --------------------------------------------------------------- */
+
+.dot {
+  inline-size: var(--dot-size);
+  block-size: var(--dot-size);
+  border-radius: 50%;
+  position: relative;
+  /* Visual placeholder until commit 2 (the real palette pass). */
+  background: color-mix(in oklab, CanvasText 8%, transparent);
+}
+
+/* Logged-0 vs unlogged: communicated by SHAPE, not colour.
+ * - logged (any count, incl. 0) → filled dot
+ * - unlogged                    → hollow ring
+ * Real colour ramp arrives in commit 2.
+ */
+.dot[data-logged="false"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, CanvasText 35%, transparent);
+}
+
+/* Today affordance — persistent ring around the dot. */
+.dot[data-today="true"] {
+  outline: 1.5px solid CanvasText;
+  outline-offset: 2px;
+}
+
+.dot[data-future="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, CanvasText 15%, transparent);
+  cursor: default;
+}
+
+.dot:focus-visible {
+  outline: 2px solid CanvasText;
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+/* ---- quick add / FAB ---------------------------------------------------- */
+
+.quick-add {
+  display: none; /* desktop button slot — wired up in commit 4 */
+}
+@media (hover: hover) and (pointer: fine) {
+  .quick-add {
+    display: block;
+  }
+  .quick-add-btn {
+    padding: .5rem .9rem;
+    border-radius: 999px;
+    outline: 1px solid currentColor;
+    outline-offset: -1px;
+    font-weight: 500;
+  }
+  .quick-add-btn:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+  .fab { display: none; }
+}
+
+.fab {
+  position: fixed;
+  inset-inline-end: 1rem;
+  inset-block-end: max(1rem, env(safe-area-inset-bottom));
+  inline-size: 56px;
+  block-size: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  background: CanvasText;
+  color: Canvas;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.fab:focus-visible {
+  outline: 2px solid CanvasText;
+  outline-offset: 3px;
+}
+
+/* ---- grid footer (C's "see more") -------------------------------------- */
+
+.grid-footer {
+  display: flex;
+  justify-content: center;
+}
+.see-more {
+  padding: .5rem .9rem;
+  border-radius: 999px;
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+  font-size: .9rem;
+  opacity: .85;
+}
+.see-more:focus-visible {
+  outline: 2px solid CanvasText;
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* ---- reduced motion ---------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
