@@ -23,6 +23,10 @@ import {
   bucketFor,
   magnifyWeight,
   computeMagnifyLevels,
+  daysBetween,
+  lastLoggedText,
+  displayInitial,
+  logsToEntries,
 } from './app.js';
 
 // ---------------------------------------------------------------------------
@@ -642,6 +646,118 @@ test('buildDays: November (DST ends in US) produces correct length', () => {
   const nov5 = new Date(2024, 10, 5); // November 5 — DST fallback in US
   const { days } = buildDays('year', nov5);
   assertEqual(days.length, 52 * 7);
+});
+
+// ---------------------------------------------------------------------------
+// daysBetween
+// ---------------------------------------------------------------------------
+
+test('daysBetween: same day is zero regardless of clock time', () => {
+  const a = new Date(2026, 4, 11, 9, 30);
+  const b = new Date(2026, 4, 11, 23, 59);
+  assertEqual(daysBetween(a, b), 0);
+});
+
+test('daysBetween: counts whole calendar days forward', () => {
+  const a = new Date(2026, 4, 1);
+  const b = new Date(2026, 4, 11);
+  assertEqual(daysBetween(a, b), 10);
+});
+
+test('daysBetween: negative when "to" is before "from"', () => {
+  const a = new Date(2026, 4, 11);
+  const b = new Date(2026, 4, 8);
+  assertEqual(daysBetween(a, b), -3);
+});
+
+test('daysBetween: handles spring-forward DST without rounding to wrong day', () => {
+  // US spring forward 2024-03-10. Counting from March 1 to March 31 must be 30.
+  const a = new Date(2024, 2, 1);
+  const b = new Date(2024, 2, 31);
+  assertEqual(daysBetween(a, b), 30);
+});
+
+// ---------------------------------------------------------------------------
+// lastLoggedText
+// ---------------------------------------------------------------------------
+
+test('lastLoggedText: empty state when no logs', () => {
+  const today = new Date(2026, 4, 11);
+  assertEqual(lastLoggedText(null, today), 'no logs yet — tap +1 to start');
+});
+
+test('lastLoggedText: today / yesterday / N days ago', () => {
+  const today = new Date(2026, 4, 11);
+  assertEqual(lastLoggedText('2026-05-11', today), 'last logged today');
+  assertEqual(lastLoggedText('2026-05-10', today), 'last logged yesterday');
+  assertEqual(lastLoggedText('2026-05-08', today), 'last logged 3 days ago');
+});
+
+test('lastLoggedText: weeks bucket', () => {
+  const today = new Date(2026, 4, 11);
+  assertEqual(lastLoggedText('2026-05-04', today), 'last logged a week ago');
+  assertEqual(lastLoggedText('2026-04-25', today), 'last logged 2 weeks ago');
+});
+
+test('lastLoggedText: a while ago beyond a month', () => {
+  const today = new Date(2026, 4, 11);
+  assertEqual(lastLoggedText('2026-01-01', today), 'last logged a while ago');
+});
+
+// ---------------------------------------------------------------------------
+// displayInitial
+// ---------------------------------------------------------------------------
+
+test('displayInitial: prefers display name over email', () => {
+  assertEqual(displayInitial('cam', 'cam@example.com'), 'C');
+});
+
+test('displayInitial: falls back to email when name is blank', () => {
+  assertEqual(displayInitial('', 'jamie@example.com'), 'J');
+  assertEqual(displayInitial('   ', 'sam@example.com'), 'S');
+});
+
+test('displayInitial: returns dot when both are missing', () => {
+  assertEqual(displayInitial('', ''), '·');
+  assertEqual(displayInitial(undefined, undefined), '·');
+});
+
+test('displayInitial: handles non-ASCII first character', () => {
+  // Cyrillic Д should uppercase cleanly.
+  assertEqual(displayInitial('давид', ''), 'Д');
+});
+
+// ---------------------------------------------------------------------------
+// logsToEntries
+// ---------------------------------------------------------------------------
+
+test('logsToEntries: maps API rows to normalized entries', () => {
+  const map = logsToEntries([
+    { date: '2026-05-11', drinks: 2, note: 'pub' },
+    { date: '2026-05-10', drinks: 0, note: '' },
+  ]);
+  assertDeepEqual(map.get('2026-05-11'), { logged: true, count: 2, note: 'pub' });
+  assertDeepEqual(map.get('2026-05-10'), { logged: true, count: 0, note: '' });
+  assertEqual(map.size, 2);
+});
+
+test('logsToEntries: tolerates missing or weird values', () => {
+  const map = logsToEntries([
+    { date: '2026-05-11' },                      // missing drinks/note
+    { date: '2026-05-10', drinks: 999, note: null },
+    { drinks: 1 },                                // missing date — skipped
+    null,                                         // skipped
+  ]);
+  assertDeepEqual(map.get('2026-05-11'), { logged: true, count: 0, note: '' });
+  assertEqual(map.get('2026-05-10').count, 30); // clamped
+  assertEqual(map.get('2026-05-10').note, '');
+  assertEqual(map.size, 2);
+});
+
+test('logsToEntries: returns empty map for non-array input', () => {
+  assertEqual(logsToEntries(null).size, 0);
+  assertEqual(logsToEntries(undefined).size, 0);
+  assertEqual(logsToEntries('nope').size, 0);
 });
 
 // ---------------------------------------------------------------------------
