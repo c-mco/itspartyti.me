@@ -18,6 +18,8 @@ const NOTE_MAX = 500;
 const MAGNIFY_RADIUS = 2;
 const TOUCH_LABEL_OFFSET_X = -20;
 const TOUCH_LABEL_OFFSET_Y = -56;
+const MOUSE_LABEL_OFFSET_Y = 12;
+const TOUCH_CLICK_SUPPRESS_MS = 600;
 const WEEKDAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTH_LONG   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -25,10 +27,12 @@ const APP_STATE = {
   entriesByDate: new Map(),
   openDate: null,
   saveTimer: null,
+  savedShowTimer: null,
   blurTimer: null,
-  saveTick: 0,
+  savedHideTimer: null,
   activeTouchPointerId: null,
   suppressClickUntil: 0,
+  pointerWired: false,
 };
 
 // --- date helpers ---------------------------------------------------------
@@ -66,8 +70,24 @@ function longDate(d) {
 }
 
 function parseIsoDate(iso) {
-  const [y, m, d] = iso.split('-').map((v) => Number(v));
-  return new Date(y, (m || 1) - 1, d || 1);
+  const parts = iso.split('-');
+  if (parts.length !== 3) return new Date(1970, 0, 1);
+  const [yRaw, mRaw, dRaw] = parts;
+  const y = Number(yRaw);
+  const m = Number(mRaw);
+  const d = Number(dRaw);
+  const safeYear = Number.isFinite(y) ? y : 1970;
+  const safeMonth = Number.isFinite(m) && m >= 1 && m <= 12 ? m : 1;
+  const safeDay = Number.isFinite(d) && d >= 1 && d <= 31 ? d : 1;
+  const candidate = new Date(safeYear, safeMonth - 1, safeDay);
+  if (
+    candidate.getFullYear() !== safeYear ||
+    candidate.getMonth() !== safeMonth - 1 ||
+    candidate.getDate() !== safeDay
+  ) {
+    return new Date(safeYear, safeMonth - 1, 1);
+  }
+  return candidate;
 }
 
 function clampDrinkCount(value) {
@@ -440,8 +460,10 @@ function setMagnify(grid, centerDot, point = null) {
   label.textContent = `${longDate(date)} · ${countSummary(entry)}`;
   label.hidden = false;
   const rect = centerDot.getBoundingClientRect();
-  const x = point ? point.clientX + TOUCH_LABEL_OFFSET_X : rect.left + (rect.width / 2);
-  const y = point ? point.clientY + TOUCH_LABEL_OFFSET_Y : rect.top - 12;
+  const xRaw = point ? point.clientX + TOUCH_LABEL_OFFSET_X : rect.left + (rect.width / 2);
+  const yRaw = point ? point.clientY + TOUCH_LABEL_OFFSET_Y : rect.top - MOUSE_LABEL_OFFSET_Y;
+  const x = Math.max(16, Math.min(window.innerWidth - 16, xRaw));
+  const y = Math.max(20, Math.min(window.innerHeight - 20, yRaw));
   label.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
 }
 
@@ -470,22 +492,32 @@ function ensureBloomHost() {
 function announceSaved() {
   const live = document.querySelector('[data-live]');
   if (!live) return;
-  APP_STATE.saveTick += 1;
-  live.textContent = `saved ✓ (${APP_STATE.saveTick})`;
+  live.textContent = '';
+  requestAnimationFrame(() => {
+    live.textContent = 'saved ✓';
+  });
 }
 
 function scheduleSave(delay = AUTO_SAVE_IDLE_MS) {
   if (APP_STATE.saveTimer) clearTimeout(APP_STATE.saveTimer);
+  if (APP_STATE.savedShowTimer) {
+    clearTimeout(APP_STATE.savedShowTimer);
+    APP_STATE.savedShowTimer = null;
+  }
   APP_STATE.saveTimer = setTimeout(() => {
     APP_STATE.saveTimer = null;
     announceSaved();
     const saved = document.querySelector('[data-bloom-saved]');
     if (!saved) return;
-    saved.hidden = false;
-    if (saved._hideTimer) clearTimeout(saved._hideTimer);
-    saved._hideTimer = setTimeout(() => {
-      saved.hidden = true;
-    }, 1200);
+    APP_STATE.savedShowTimer = setTimeout(() => {
+      APP_STATE.savedShowTimer = null;
+      saved.hidden = false;
+      if (APP_STATE.savedHideTimer) clearTimeout(APP_STATE.savedHideTimer);
+      APP_STATE.savedHideTimer = setTimeout(() => {
+        saved.hidden = true;
+        APP_STATE.savedHideTimer = null;
+      }, 1200);
+    }, 16);
   }, delay);
 }
 
@@ -501,8 +533,9 @@ function updateOpenDotFromEditor(host) {
   if (!iso) return;
   const countInput = host.querySelector('[data-count-input]');
   const noteInput = host.querySelector('[data-note-input]');
-  const count = clampDrinkCount(countInput?.value ?? 0);
-  const note = String(noteInput?.value ?? '');
+  if (!(countInput instanceof HTMLInputElement) || !(noteInput instanceof HTMLTextAreaElement)) return;
+  const count = clampDrinkCount(countInput.value);
+  const note = String(noteInput.value ?? '');
   const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
   const next = {
     logged: current.logged,
@@ -514,6 +547,15 @@ function updateOpenDotFromEditor(host) {
   const dot = grid?.querySelector(`.dot[data-date="${iso}"]`);
   if (dot) setDotFromEntry(dot, next);
   updateBloomCharCount(host, next.note.length);
+}
+
+function updateEntryField(host, iso, updates) {
+  const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+  APP_STATE.entriesByDate.set(iso, { ...current, ...updates });
+  const del = host.querySelector('[data-delete-day]');
+  if (del) del.hidden = false;
+  updateOpenDotFromEditor(host);
+  scheduleSave();
 }
 
 function closeBloomEditor({ restoreFocus = false } = {}) {
@@ -532,6 +574,14 @@ function closeBloomEditor({ restoreFocus = false } = {}) {
   }
   host.hidden = true;
   host.replaceChildren();
+  if (APP_STATE.savedHideTimer) {
+    clearTimeout(APP_STATE.savedHideTimer);
+    APP_STATE.savedHideTimer = null;
+  }
+  if (APP_STATE.savedShowTimer) {
+    clearTimeout(APP_STATE.savedShowTimer);
+    APP_STATE.savedShowTimer = null;
+  }
   if (restoreFocus && activeDot) activeDot.focus();
   APP_STATE.openDate = null;
 }
@@ -552,16 +602,20 @@ function openDay(dot, { focusEditor = true } = {}) {
   host.replaceChildren();
 
   const title = document.createElement('h2');
+  title.id = `bloom-title-${iso}`;
   title.textContent = longDate(parseIsoDate(iso));
+  host.setAttribute('aria-labelledby', title.id);
   const controls = document.createElement('div');
   const minus = document.createElement('button');
   minus.type = 'button';
   minus.dataset.step = '-1';
   minus.textContent = '−';
+  minus.setAttribute('aria-label', 'Decrease drink count by 1');
   const plus = document.createElement('button');
   plus.type = 'button';
   plus.dataset.step = '1';
   plus.textContent = '+';
+  plus.setAttribute('aria-label', 'Increase drink count by 1');
   const count = document.createElement('input');
   count.type = 'number';
   count.inputMode = 'numeric';
@@ -582,6 +636,8 @@ function openDay(dot, { focusEditor = true } = {}) {
 
   const noteCount = document.createElement('p');
   noteCount.dataset.noteCount = 'true';
+  noteCount.setAttribute('role', 'status');
+  noteCount.setAttribute('aria-live', 'polite');
   noteCount.hidden = true;
 
   const saved = document.createElement('p');
@@ -593,6 +649,7 @@ function openDay(dot, { focusEditor = true } = {}) {
   del.type = 'button';
   del.dataset.deleteDay = 'true';
   del.textContent = 'Delete';
+  del.setAttribute('aria-label', `Delete entry for ${longDate(parseIsoDate(iso))}`);
   del.hidden = !entry.logged && entry.note.length === 0;
 
   host.append(title, controls, note, noteCount, saved, del);
@@ -641,26 +698,16 @@ function openDay(dot, { focusEditor = true } = {}) {
   };
 
   count.addEventListener('input', () => {
-    const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
-    APP_STATE.entriesByDate.set(iso, {
-      ...current,
+    updateEntryField(host, iso, {
       logged: true,
       count: clampDrinkCount(count.value),
     });
-    del.hidden = false;
-    updateOpenDotFromEditor(host);
-    scheduleSave();
   });
 
   note.addEventListener('input', () => {
-    const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
-    APP_STATE.entriesByDate.set(iso, {
-      ...current,
+    updateEntryField(host, iso, {
       note: note.value.slice(0, NOTE_MAX),
     });
-    del.hidden = false;
-    updateOpenDotFromEditor(host);
-    scheduleSave();
   });
 
   host.onkeydown = (event) => {
@@ -673,6 +720,8 @@ function openDay(dot, { focusEditor = true } = {}) {
 }
 
 function wireGridPointerAndOpen() {
+  if (APP_STATE.pointerWired) return;
+  APP_STATE.pointerWired = true;
   const grid = document.querySelector('[data-grid]');
   if (!grid) return;
 
@@ -716,9 +765,9 @@ function wireGridPointerAndOpen() {
     if (APP_STATE.activeTouchPointerId !== event.pointerId) return;
     const dot = dotAtPoint(grid, event.clientX, event.clientY);
     APP_STATE.activeTouchPointerId = null;
-    APP_STATE.suppressClickUntil = Date.now() + 600;
     clearMagnify(grid);
     if (!dot || dot.disabled) return;
+    APP_STATE.suppressClickUntil = Date.now() + TOUCH_CLICK_SUPPRESS_MS;
     openDay(dot);
   });
 

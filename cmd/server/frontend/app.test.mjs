@@ -240,6 +240,13 @@ test('parseIsoDate: parses YYYY-MM-DD in local calendar terms', () => {
   assertEqual(d.getDate(), 11);
 });
 
+test('parseIsoDate: malformed input falls back to unix epoch date', () => {
+  const d = parseIsoDate('2026-05');
+  assertEqual(d.getFullYear(), 1970);
+  assertEqual(d.getMonth(), 0);
+  assertEqual(d.getDate(), 1);
+});
+
 test('clampDrinkCount: clamps negatives to 0 and rounds', () => {
   assertEqual(clampDrinkCount(-3), 0);
   assertEqual(clampDrinkCount(2.7), 3);
