@@ -29,9 +29,13 @@ jobs:
 
       - name: compute deploy vars
         id: vars
+        env:
+          # On pull_request, checkout creates a merge ref, so `git rev-parse HEAD`
+          # would point at the merge commit, not the PR head. Use the event payload.
+          FULL_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          SHA=$(git rev-parse --short HEAD)
+          SHA="${FULL_SHA:0:7}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             {
               echo "version=${SHA}-preview"
