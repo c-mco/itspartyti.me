@@ -95,10 +95,10 @@ jobs:
               OUT="$PROD_REPO/server.new"
             fi
 
-            go build \
+            go build -C "$BUILD_DIR" \
               -ldflags "-s -w -X main.version=$VERSION" \
               -o "$OUT" \
-              "$BUILD_DIR/cmd/server"
+              ./cmd/server
 
             cd ~/"$TARGET"
             if [ -f server ]; then mv -f server server.prev; fi
