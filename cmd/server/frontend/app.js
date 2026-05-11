@@ -189,6 +189,30 @@ function renderGrid(gridEl, { orientation, range }, today) {
 
   gridEl.replaceChildren(frag);
   setupRovingTabindex(gridEl);
+  scrollTodayIntoView(gridEl);
+}
+
+/**
+ * Anchor the horizontal grid (layout A) to today on first render so the
+ * most recent week is visible without the user having to scroll. Vertical
+ * layouts already render today near the bottom, where the page scroll lands
+ * naturally — no work needed there.
+ */
+function scrollTodayIntoView(gridEl) {
+  if (gridEl.dataset.orientation !== 'horizontal') return;
+  const todayDot = gridEl.querySelector('.dot[data-today="true"]');
+  if (!todayDot) {
+    // No "today" in range (shouldn't happen with current ranges) — fall back
+    // to scrolling to the end so the most recent week is visible.
+    gridEl.scrollLeft = gridEl.scrollWidth;
+    return;
+  }
+  // Place today near the right edge with a bit of breathing room.
+  const padding = 16;
+  gridEl.scrollLeft = Math.max(
+    0,
+    todayDot.offsetLeft + todayDot.offsetWidth - gridEl.clientWidth + padding,
+  );
 }
 
 function setupRovingTabindex(gridEl) {
