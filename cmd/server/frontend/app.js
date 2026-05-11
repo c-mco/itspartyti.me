@@ -641,6 +641,7 @@ function closeBloomEditor({ restoreFocus = false } = {}) {
   }
   host.hidden = true;
   host.replaceChildren();
+  delete host.dataset.date;
   if (APP_STATE.savedHideTimer) {
     clearTimeout(APP_STATE.savedHideTimer);
     APP_STATE.savedHideTimer = null;
@@ -873,8 +874,8 @@ function wireGridPointerAndOpen() {
     if (!host || !target) return;
     if (host.contains(target)) return;
     if (target instanceof Element && target.closest(`.dot[data-date="${APP_STATE.openDate}"]`)) return;
-    // Don't auto-close when clicking inside the avatar sheet.
-    if (target instanceof Element && target.closest('[data-sheet]')) return;
+    // Don't auto-close when clicking inside the avatar sheet (or its backdrop).
+    if (target instanceof Element && target.closest('[data-sheet], [data-sheet-backdrop]')) return;
     closeBloomEditor();
   });
 }
@@ -1084,6 +1085,9 @@ function pulseTodayDot() {
   const grid = document.querySelector('[data-grid]');
   const todayDot = grid?.querySelector('.dot[data-today="true"]');
   if (!todayDot) return;
+  // If today is currently open in the bloom editor, the dot already has a
+  // persistent scale(1.4) ring — don't fight it with a WAAPI animation.
+  if (todayDot.dataset.open === 'true') return;
   // Lightweight pulse via Web Animations API; falls back gracefully if missing.
   if (typeof todayDot.animate !== 'function' || isReducedMotion()) return;
   try {
@@ -1240,6 +1244,8 @@ function openSheet() {
   const acctMsg = document.createElement('p');
   acctMsg.className = 'sheet-msg';
   acctMsg.dataset.acctMsg = 'true';
+  acctMsg.setAttribute('role', 'status');
+  acctMsg.setAttribute('aria-live', 'polite');
   const acctActions = document.createElement('div');
   acctActions.className = 'sheet-actions';
   const saveBtn = document.createElement('button');
@@ -1263,6 +1269,8 @@ function openSheet() {
   newLabel.append(newInput);
   const passMsg = document.createElement('p');
   passMsg.className = 'sheet-msg'; passMsg.dataset.passMsg = 'true';
+  passMsg.setAttribute('role', 'status');
+  passMsg.setAttribute('aria-live', 'polite');
   const passActions = document.createElement('div');
   passActions.className = 'sheet-actions';
   const changeBtn = document.createElement('button');
@@ -1289,7 +1297,7 @@ function openSheet() {
   const toggleInput = document.createElement('input');
   toggleInput.type = 'checkbox';
   toggleInput.checked = settings.autoOpenWhenAway === true;
-  toggleInput.setAttribute('aria-label', 'Auto-open today when I have been away');
+  toggleInput.setAttribute('aria-label', 'Auto-open today when I’ve been away');
   const track = document.createElement('span'); track.className = 'track'; track.setAttribute('aria-hidden', 'true');
   const thumb = document.createElement('span'); thumb.className = 'thumb'; thumb.setAttribute('aria-hidden', 'true');
   switchEl.append(toggleInput, track, thumb);
@@ -1309,6 +1317,8 @@ function openSheet() {
   dActions.append(logoutBtn, deleteBtn);
   const dMsg = document.createElement('p');
   dMsg.className = 'sheet-msg'; dMsg.dataset.dangerMsg = 'true';
+  dMsg.setAttribute('role', 'status');
+  dMsg.setAttribute('aria-live', 'polite');
   dangerSection.append(dH, dActions, dMsg);
 
   sheet.append(handle, title, accountSection, passSection, settingsSection, dangerSection);
@@ -1339,6 +1349,7 @@ function openSheet() {
 
   changeBtn.addEventListener('click', async () => {
     if (APP_STATE.demo) { passMsg.textContent = 'demo mode — password changes disabled'; passMsg.dataset.tone = 'error'; return; }
+    if (!currInput.value) { passMsg.textContent = 'Enter your current password.'; passMsg.dataset.tone = 'error'; return; }
     if (newInput.value.length < 8) { passMsg.textContent = 'New password must be at least 8 characters.'; passMsg.dataset.tone = 'error'; return; }
     passMsg.textContent = 'Updating…'; passMsg.dataset.tone = '';
     try {
@@ -1378,7 +1389,25 @@ function openSheet() {
     if (e.target === backdrop) closeSheet();
   });
   sheet.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); closeSheet(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeSheet(); return; }
+    if (e.key !== 'Tab') return;
+    // Basic focus trap — keep tabbing inside the sheet.
+    const focusables = Array.from(
+      sheet.querySelectorAll(
+        'input:not([disabled]):not([type="hidden"]), button:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last  = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   });
 
   const avatar = document.querySelector('[data-avatar]');
@@ -1488,11 +1517,11 @@ function wireAuth() {
       if (msg) { msg.textContent = 'Please enter your email and password.'; msg.dataset.tone = 'error'; }
       return;
     }
-    if (msg) { msg.textContent = mode === 'register' ? 'Creating account…' : 'Signing in…'; msg.dataset.tone = ''; }
     if (mode === 'register' && passValue.length < 8) {
       if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.dataset.tone = 'error'; }
       return;
     }
+    if (msg) { msg.textContent = mode === 'register' ? 'Creating account…' : 'Signing in…'; msg.dataset.tone = ''; }
     if (submit instanceof HTMLButtonElement) submit.disabled = true;
     try {
       if (mode === 'register') {
@@ -1562,19 +1591,24 @@ async function loadEntries() {
   if (APP_STATE.demo) {
     // Mock data is seeded lazily in renderGrid.
     APP_STATE.entriesByDate = new Map();
-    return;
+    return { authExpired: false };
   }
   try {
     const logs = await api.getLogs();
     APP_STATE.entriesByDate = logsToEntries(logs);
+    return { authExpired: false };
   } catch (err) {
     if (err?.status === 401) {
       APP_STATE.user = null;
-      throw err;
+      // Don't render the app shell if the session expired between /api/me and
+      // /api/logs — kick back to the auth screen instead of leaving the user
+      // staring at an empty grid.
+      return { authExpired: true };
     }
     // Other errors → render empty grid; show a quiet error.
     APP_STATE.entriesByDate = new Map();
     announceLive("couldn't load logs");
+    return { authExpired: false };
   }
 }
 
@@ -1607,20 +1641,25 @@ async function boot() {
     }
   }
 
-  await loadEntries();
-  applyLayout(pickLayout());
-  wireSeeMore();
-  wireGridKeyboard();
-  wireGridPointerAndOpen();
-  wireQuickAdd();
-  wireAvatar();
-  updateAvatarInitial();
-  refreshLastLogged();
+  await loadEntries().then((res) => {
+    if (res && res.authExpired) {
+      showAuthScreen();
+      return;
+    }
+    applyLayout(pickLayout());
+    wireSeeMore();
+    wireGridKeyboard();
+    wireGridPointerAndOpen();
+    wireQuickAdd();
+    wireAvatar();
+    updateAvatarInitial();
+    refreshLastLogged();
 
-  // Touch lastSeen and (maybe) auto-open today.
-  const today = startOfDay(new Date());
-  maybeAutoOpenToday();
-  touchLastSeenIso(isoDate(today));
+    // Touch lastSeen and (maybe) auto-open today.
+    const today = startOfDay(new Date());
+    maybeAutoOpenToday();
+    touchLastSeenIso(isoDate(today));
+  });
 }
 
 if (typeof document !== 'undefined') {
