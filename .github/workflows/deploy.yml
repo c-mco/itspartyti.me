@@ -62,7 +62,6 @@ jobs:
       - name: build, swap, restart, verify
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          TARGET: ${{ steps.vars.outputs.target }}
           SERVICE: ${{ steps.vars.outputs.service }}
           PORT: ${{ steps.vars.outputs.port }}
           LABEL: ${{ steps.vars.outputs.label }}
@@ -74,33 +73,31 @@ jobs:
           port: 2222
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: TARGET,SERVICE,PORT,LABEL,IS_PREVIEW,SHA,VERSION
+          envs: SERVICE,PORT,LABEL,IS_PREVIEW,SHA,VERSION
           script: |
             set -euo pipefail
             export PATH="/opt/homebrew/bin:$PATH"
-            PROD_REPO=~/itspartyti.me
+            PROD_REPO="$HOME/itspartyti.me"
 
             if [ "$IS_PREVIEW" = "true" ]; then
-              # Build the PR branch in a throwaway worktree so the prod
-              # working tree is never touched.
+              DEPLOY_DIR="$HOME/itspartyti.me-preview"
               WORKTREE=$(mktemp -d)
               trap 'git -C "$PROD_REPO" worktree remove --force "$WORKTREE" 2>/dev/null || true; rm -rf "$WORKTREE"' EXIT
               git -C "$PROD_REPO" fetch origin
               git -C "$PROD_REPO" worktree add "$WORKTREE" "$SHA"
               BUILD_DIR="$WORKTREE"
-              OUT=~/"$TARGET"/server.new
             else
+              DEPLOY_DIR="$HOME/itspartyti.me"
               git -C "$PROD_REPO" pull origin main
               BUILD_DIR="$PROD_REPO"
-              OUT="$PROD_REPO/server.new"
             fi
 
             go build -C "$BUILD_DIR" \
               -ldflags "-s -w -X main.version=$VERSION" \
-              -o "$OUT" \
+              -o "$DEPLOY_DIR/server.new" \
               ./cmd/server
 
-            cd ~/"$TARGET"
+            cd "$DEPLOY_DIR"
             if [ -f server ]; then mv -f server server.prev; fi
             mv -f server.new server
 
