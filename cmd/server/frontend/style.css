@@ -1,47 +1,151 @@
-/* itspartyti.me — skeleton CSS (commit 1)
+/* itspartyti.me — UI rebuild v3
  *
- * This file is intentionally minimal. It exists to:
- *   - lay out the page (topbar, grid, FAB)
- *   - give the grid its three orientation/scroll behaviours
- *   - render a placeholder dot vs. hollow ring so the unlogged-vs-logged-0
- *     distinction is visible even before the palette pass
+ * Palette: indigo base, single accent. Traffic-light ramp for the heatmap.
+ * Light + dark via prefers-color-scheme. Hand-written, no framework.
  *
- * Commit 2 (CSS pass 1) will replace the placeholder palette with the real
- * traffic-light ramp, light + dark themes, today ring, etc.
+ * Layout:
+ *   - One screen. Topbar (avatar) + grid + quick add.
+ *   - Avatar opens a sheet on mobile, popover on desktop.
+ *   - Auth screen takes over the whole viewport when not signed in.
+ *   - Bloom card opens below the grid (in-place enough for v1; the dot stays
+ *     marked open and the colour updates live).
+ *
+ * Conventions:
+ *   - Logged-0 vs unlogged → SHAPE, not colour. Filled dot vs hollow ring.
+ *   - Today → persistent accent ring around the dot.
+ *   - Numbers never on cells. Only in the magnify label and bloom card.
+ *   - Reduced-motion is respected throughout.
  */
 
-/* ---- reset-ish ---------------------------------------------------------- */
+/* =========================================================================
+ * Tokens
+ * ========================================================================= */
 
-*,
-*::before,
-*::after { box-sizing: border-box; }
+:root {
+  /* Surfaces & ink */
+  --bg:           oklch(98.5% 0.005 270);
+  --bg-elev:     oklch(100% 0 0);
+  --bg-sunk:     oklch(96% 0.008 270);
+  --ink:         oklch(22% 0.03 270);
+  --ink-soft:    oklch(40% 0.02 270);
+  --ink-faint:   oklch(60% 0.02 270);
+  --line:        oklch(88% 0.01 270);
+  --line-soft:   oklch(93% 0.008 270);
 
-html, body { margin: 0; padding: 0; }
+  /* Accent: indigo. Used for today's ring, focus, primary buttons. */
+  --accent:       oklch(55% 0.18 275);
+  --accent-soft:  oklch(70% 0.12 275);
+  --accent-ink:   oklch(98% 0.005 275);
 
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
+  /* Traffic-light ramp — desaturated so a wall of red doesn't shame.
+     Honest, not stern. */
+  --ramp-zero:  oklch(80% 0.07 145); /* logged sober — soft green */
+  --ramp-low:   oklch(72% 0.13 145); /* 1 drink */
+  --ramp-mid:   oklch(82% 0.13 92);  /* 2–3 — yellow */
+  --ramp-high:  oklch(72% 0.15 55);  /* 4–5 — orange */
+  --ramp-peak:  oklch(62% 0.17 25);  /* 6+   — red */
+
+  /* Unlogged ring (the empty silhouette). */
+  --ring-unlogged: oklch(82% 0.01 270);
+  --ring-future:   oklch(92% 0.005 270);
+
+  /* Geometry */
+  --dot-size: 14px;
+  --dot-gap: 4px;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow-sheet: 0 30px 60px -20px oklch(20% 0.05 270 / 0.3),
+                  0 8px 18px -8px oklch(20% 0.05 270 / 0.18);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:           oklch(17% 0.02 270);
+    --bg-elev:      oklch(22% 0.025 270);
+    --bg-sunk:      oklch(14% 0.02 270);
+    --ink:          oklch(94% 0.008 270);
+    --ink-soft:     oklch(78% 0.015 270);
+    --ink-faint:    oklch(60% 0.02 270);
+    --line:         oklch(32% 0.02 270);
+    --line-soft:    oklch(26% 0.02 270);
+
+    --accent:       oklch(72% 0.14 275);
+    --accent-soft:  oklch(58% 0.16 275);
+    --accent-ink:   oklch(15% 0.04 275);
+
+    --ramp-zero:  oklch(58% 0.08 145);
+    --ramp-low:   oklch(60% 0.14 145);
+    --ramp-mid:   oklch(72% 0.15 92);
+    --ramp-high:  oklch(66% 0.17 55);
+    --ramp-peak:  oklch(60% 0.18 25);
+
+    --ring-unlogged: oklch(38% 0.015 270);
+    --ring-future:   oklch(28% 0.012 270);
+
+    --shadow-sheet: 0 30px 60px -20px oklch(0% 0 0 / 0.6),
+                    0 8px 18px -8px oklch(0% 0 0 / 0.4);
+  }
+}
+
+/* Sizing tweaks at small widths so the grid actually fits a phone. */
+@media (max-width: 480px) {
+  :root {
+    --dot-size: 12px;
+    --dot-gap: 3px;
+  }
+}
+
+/* =========================================================================
+ * Reset-ish
+ * ========================================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
   min-height: 100dvh;
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: Canvas;
-  color: CanvasText;
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
 }
 
 button {
-  font: inherit;
-  color: inherit;
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
+  color: inherit;
 }
 
-/* ---- a11y helpers ------------------------------------------------------- */
+input, textarea, select {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: .55rem .7rem;
+  color: var(--ink);
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: transparent;
+}
+textarea { resize: vertical; min-height: 4lh; }
 
-.visually-hidden {
+/* =========================================================================
+ * A11y helpers
+ * ========================================================================= */
+
+.visually-hidden,
+.live {
   position: absolute !important;
   width: 1px; height: 1px;
   padding: 0; margin: -1px;
@@ -55,26 +159,22 @@ button {
   position: absolute;
   left: -9999px;
   top: 0;
+  background: var(--bg-elev);
+  color: var(--ink);
+  padding: .55rem .8rem;
+  border-radius: var(--radius-sm);
+  z-index: 100;
 }
 .skip-link:focus {
   left: .5rem;
   top: .5rem;
-  background: Canvas;
-  color: CanvasText;
-  padding: .5rem .75rem;
-  outline: 2px solid CanvasText;
-  z-index: 10;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Visually-hidden but polite live region. */
-.live {
-  position: absolute;
-  width: 1px; height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-/* ---- page chrome -------------------------------------------------------- */
+/* =========================================================================
+ * Page chrome
+ * ========================================================================= */
 
 .topbar {
   display: flex;
@@ -82,137 +182,230 @@ button {
   justify-content: space-between;
   gap: 1rem;
   padding: .75rem 1rem;
+  position: sticky;
+  top: 0;
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(8px);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+  z-index: 5;
 }
 
 .brand {
   margin: 0;
-  font-size: .9rem;
-  letter-spacing: .01em;
-  opacity: .7;
+  font-size: .85rem;
+  letter-spacing: .02em;
+  color: var(--ink-faint);
+  font-weight: 500;
 }
 
 .avatar {
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  min-inline-size: 44px; /* touch target */
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  min-inline-size: 44px;
   min-block-size: 44px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  outline: 1px solid currentColor;
-  outline-offset: -1px;
-  opacity: .85;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: .95rem;
+  text-transform: uppercase;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
 }
-.avatar:focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; }
+.avatar:hover { border-color: var(--accent-soft); color: var(--ink); }
+.avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.avatar[aria-expanded="true"] { border-color: var(--accent); color: var(--ink); }
 
 .app {
   display: grid;
   gap: 1rem;
   padding: 0 1rem 6rem;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .last-logged {
   margin: 0;
   font-size: .85rem;
-  opacity: .6;
+  color: var(--ink-faint);
+  min-height: 1.2lh; /* avoid layout shift when text loads */
 }
 
-/* ---- grid wrapper ------------------------------------------------------- */
+/* =========================================================================
+ * Grid
+ * ========================================================================= */
 
 .grid-wrap {
-  /* The grid sizes itself; the wrapper just provides scroll context. */
-  --dot-size: 14px;
-  --dot-gap: 4px;
+  position: relative;
 }
 
-/* The grid is the visualisation. Orientation/range come from data attrs. */
 .grid {
-  --dot-size: 14px;
-  --dot-gap: 4px;
   display: grid;
   gap: var(--dot-gap);
+  /* Allow individual dots to grow above neighbours when magnified. */
+  isolation: isolate;
 }
 
-/* A — horizontal: 7 rows × N columns (one column per week). */
+/* A — horizontal: 7 rows × N columns, scrolls horizontally. */
 .grid[data-orientation="horizontal"] {
   grid-template-rows: repeat(7, var(--dot-size));
   grid-auto-flow: column;
   grid-auto-columns: var(--dot-size);
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
+  /* Generous vertical padding so magnified dots in row 1/7 aren't clipped. */
+  padding: calc(var(--dot-size) * 1.6) 4px;
+  margin: calc(var(--dot-size) * -1.6) -4px;
   scroll-snap-type: x proximity;
-  padding-block: 2px; /* room for focus rings */
-  /* Keep native left-to-right scrolling behavior. */
-  direction: ltr;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.grid[data-orientation="horizontal"]::-webkit-scrollbar { height: 6px; }
+.grid[data-orientation="horizontal"]::-webkit-scrollbar-thumb {
+  background: var(--line); border-radius: 999px;
 }
 
-/* B/C — vertical: 7 columns × N rows. Native vertical scroll. */
+/* B/C — vertical: 7 columns × N rows. Page scrolls. */
 .grid[data-orientation="vertical"] {
   grid-template-columns: repeat(7, var(--dot-size));
   grid-auto-rows: var(--dot-size);
   justify-content: center;
-  /* No overflow — the page scrolls. */
+  padding: calc(var(--dot-size) * 1.2) 0;
 }
 
-/* ---- dots --------------------------------------------------------------- */
+/* =========================================================================
+ * Dots
+ * ========================================================================= */
 
 .dot {
+  --bucket-color: oklch(85% 0.01 270);
   inline-size: var(--dot-size);
   block-size: var(--dot-size);
   border-radius: 50%;
   position: relative;
-  /* Visual placeholder until commit 2 (the real palette pass). */
-  background: color-mix(in oklab, CanvasText 8%, transparent);
+  background: var(--bucket-color);
+  transition: transform 140ms cubic-bezier(.2, .7, .2, 1),
+              background-color 200ms ease,
+              box-shadow 160ms ease;
+  transform-origin: center;
+  /* Each dot sits in its own stacking context so magnified dots can rise. */
+  z-index: 0;
 }
 
-/* Logged-0 vs unlogged: communicated by SHAPE, not colour.
- * - logged (any count, incl. 0) → filled dot
- * - unlogged                    → hollow ring
- * Real colour ramp arrives in commit 2.
+/* Traffic-light buckets — backed by tokens so dark mode swaps cleanly. */
+.dot[data-bucket="zero"] { --bucket-color: var(--ramp-zero); }
+.dot[data-bucket="low"]  { --bucket-color: var(--ramp-low);  }
+.dot[data-bucket="mid"]  { --bucket-color: var(--ramp-mid);  }
+.dot[data-bucket="high"] { --bucket-color: var(--ramp-high); }
+.dot[data-bucket="peak"] { --bucket-color: var(--ramp-peak); }
+
+/* Logged-0 vs unlogged — communicated by SHAPE, not colour.
+ * Logged (any count, incl. 0) → filled dot (above).
+ * Unlogged                    → hollow ring.
  */
 .dot[data-logged="false"] {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, CanvasText 35%, transparent);
-}
-
-/* Today affordance — persistent ring around the dot. */
-.dot[data-today="true"] {
-  outline: 1.5px solid CanvasText;
-  outline-offset: 2px;
+  box-shadow: inset 0 0 0 1.5px var(--ring-unlogged);
 }
 
 .dot[data-future="true"] {
   background: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, CanvasText 15%, transparent);
+  box-shadow: inset 0 0 0 1px var(--ring-future);
   cursor: default;
 }
 
-.dot:focus-visible {
-  outline: 2px solid CanvasText;
-  outline-offset: 2px;
-  z-index: 1;
+/* Today affordance — persistent accent ring. */
+.dot[data-today="true"] {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent);
+}
+/* Today + unlogged: keep the inner ring AND outer accent. */
+.dot[data-today="true"][data-logged="false"] {
+  box-shadow:
+    inset 0 0 0 1.5px var(--ring-unlogged),
+    0 0 0 2px var(--bg),
+    0 0 0 3.5px var(--accent);
 }
 
-/* ---- quick add / FAB ---------------------------------------------------- */
+/* Open-for-edit affordance — pulse/ring around the dot under the bloom card. */
+.dot[data-open="true"] {
+  z-index: 3;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  transform: scale(1.4);
+}
+
+/* Magnify — JS sets data-magnify ∈ {0.24, 0.6, 1}. */
+.dot[data-magnify] { z-index: 2; }
+.dot[data-magnify="0.24"] { transform: scale(1.18); }
+.dot[data-magnify="0.6"]  { transform: scale(1.6); z-index: 3; }
+.dot[data-magnify="1"]    { transform: scale(2.4); z-index: 4; }
+
+/* When magnified, give the dot a subtle ring so the magnified colour
+   reads cleanly against neighbours of the same hue. */
+.dot[data-magnified="true"] {
+  box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 2.5px var(--accent-soft);
+}
+.dot[data-today="true"][data-magnified="true"] {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent);
+}
+
+.dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  z-index: 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot { transition: none; }
+  .dot[data-magnify] { transform: none; }
+  /* Static highlight ring instead of scale. */
+  .dot[data-magnified="true"] {
+    box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--accent);
+  }
+  .dot[data-open="true"] { transform: none; }
+}
+
+/* =========================================================================
+ * Magnify floating label
+ * ========================================================================= */
+
+[data-magnify-label] {
+  background: var(--ink);
+  color: var(--bg);
+  padding: .35rem .6rem;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 500;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px -6px oklch(20% 0.05 270 / 0.4);
+}
+
+/* =========================================================================
+ * Quick-add (desktop) + FAB (mobile)
+ * ========================================================================= */
 
 .quick-add {
-  display: none; /* desktop button slot — wired up in commit 4 */
+  display: none; /* desktop button — shown by media query below */
+  justify-content: flex-end;
 }
+.quick-add-btn {
+  padding: .55rem 1rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  border: 0;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.quick-add-btn:hover { filter: brightness(1.05); }
+.quick-add-btn:active { transform: scale(.97); }
+.quick-add-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
 @media (hover: hover) and (pointer: fine) {
-  .quick-add {
-    display: block;
-  }
-  .quick-add-btn {
-    padding: .5rem .9rem;
-    border-radius: 999px;
-    outline: 1px solid currentColor;
-    outline-offset: -1px;
-    font-weight: 500;
-  }
-  .quick-add-btn:focus-visible {
-    outline: 2px solid CanvasText;
-    outline-offset: 2px;
-  }
+  .quick-add { display: flex; }
   .fab { display: none; }
 }
 
@@ -225,43 +418,479 @@ button {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-weight: 600;
-  background: CanvasText;
-  color: Canvas;
-  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  font-weight: 700;
+  font-size: 1rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 12px 28px -10px oklch(20% 0.05 270 / 0.55);
+  z-index: 6;
+  transition: transform 160ms cubic-bezier(.2,.7,.2,1), filter 120ms ease;
 }
-.fab:focus-visible {
-  outline: 2px solid CanvasText;
-  outline-offset: 3px;
+.fab:active { transform: scale(.94); }
+.fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-add-btn, .fab { transition: none; }
 }
 
-/* ---- grid footer (C's "see more") -------------------------------------- */
+/* =========================================================================
+ * Grid footer (C's "see more")
+ * ========================================================================= */
 
 .grid-footer {
   display: flex;
   justify-content: center;
+  margin-top: .5rem;
 }
 .see-more {
-  padding: .5rem .9rem;
+  padding: .5rem 1rem;
   border-radius: 999px;
-  outline: 1px solid currentColor;
-  outline-offset: -1px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
   font-size: .9rem;
-  opacity: .85;
+  background: var(--bg-elev);
 }
-.see-more:focus-visible {
-  outline: 2px solid CanvasText;
-  outline-offset: 2px;
-  opacity: 1;
+.see-more:hover { color: var(--ink); border-color: var(--accent-soft); }
+.see-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* =========================================================================
+ * Bloom card (the editor)
+ * ========================================================================= */
+
+[data-bloom-host] {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.1rem 1rem;
+  display: grid;
+  gap: .85rem;
+  position: relative;
+  animation: bloom-in 180ms cubic-bezier(.2,.7,.2,1);
 }
 
-/* ---- reduced motion ---------------------------------------------------- */
+@keyframes bloom-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+[data-bloom-host] h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: .005em;
+}
+
+.bloom-controls {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.bloom-controls button[data-step] {
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-size: 1.2rem;
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.bloom-controls button[data-step]:hover {
+  border-color: var(--accent-soft);
+  background: var(--bg-sunk);
+}
+.bloom-controls button[data-step]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.bloom-controls input[data-count-input] {
+  inline-size: 4.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 600;
+  -moz-appearance: textfield;
+}
+.bloom-controls input[data-count-input]::-webkit-outer-spin-button,
+.bloom-controls input[data-count-input]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.bloom-controls .count-label {
+  color: var(--ink-faint);
+  font-size: .9rem;
+  margin-inline-start: .25rem;
+}
+
+[data-bloom-host] textarea[data-note-input] {
+  width: 100%;
+  min-height: 4.5lh;
+  font-size: .95rem;
+}
+
+.bloom-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: .8rem;
+  color: var(--ink-faint);
+  min-height: 1.4lh;
+}
+[data-note-count] { margin: 0; font-variant-numeric: tabular-nums; }
+[data-note-count][hidden] { display: none; }
+[data-bloom-saved] {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 500;
+  transition: opacity 200ms ease;
+}
+[data-bloom-saved][data-tone="error"] {
+  color: var(--ramp-peak);
+}
+[data-bloom-saved][hidden] { display: none; }
+
+[data-delete-day] {
+  justify-self: start;
+  font-size: .85rem;
+  color: var(--ink-soft);
+  padding: .35rem .6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+[data-delete-day]:hover {
+  color: var(--ramp-peak);
+  border-color: color-mix(in oklab, var(--ramp-peak) 40%, transparent);
+}
+[data-delete-day]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+[data-delete-day][hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
+  [data-bloom-host] { animation: none; }
+}
+
+/* =========================================================================
+ * Toast (FAB +1 confirmation with Undo)
+ * ========================================================================= */
+
+.toast-region {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 7;
+}
+@media (hover: hover) and (pointer: fine) {
+  .toast-region { inset-block-end: 1rem; }
+}
+.toast {
+  background: var(--ink);
+  color: var(--bg);
+  padding: .6rem .85rem .6rem 1rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  font-size: .9rem;
+  box-shadow: 0 16px 32px -12px oklch(20% 0.05 270 / 0.5);
+  pointer-events: auto;
+  animation: toast-in 200ms cubic-bezier(.2,.7,.2,1);
+  max-width: calc(100vw - 2rem);
+}
+.toast button {
+  background: transparent;
+  color: var(--bg);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: .15rem .35rem;
+  border-radius: 6px;
+}
+.toast button:focus-visible { outline: 2px solid var(--bg); outline-offset: 2px; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+/* =========================================================================
+ * Avatar sheet / popover
+ * ========================================================================= */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.32);
+  z-index: 20;
+  animation: backdrop-in 160ms ease;
+}
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.sheet {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  background: var(--bg-elev);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 1rem 1.1rem max(1.25rem, env(safe-area-inset-bottom));
+  z-index: 21;
+  max-height: min(90dvh, 720px);
+  overflow-y: auto;
+  box-shadow: var(--shadow-sheet);
+  animation: sheet-up 220ms cubic-bezier(.2,.7,.2,1);
+  display: grid;
+  gap: 1rem;
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+
+@media (min-width: 720px) {
+  .sheet-backdrop { background: transparent; }
+  .sheet {
+    inset: auto;
+    position: fixed;
+    top: 4rem;
+    right: 1rem;
+    inline-size: 360px;
+    max-block-size: min(80dvh, 640px);
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    animation: sheet-pop 180ms cubic-bezier(.2,.7,.2,1);
+  }
+  @keyframes sheet-pop {
+    from { opacity: 0; transform: translateY(-4px) scale(.98); }
+    to   { opacity: 1; transform: none; }
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-backdrop { animation: none; }
+}
+
+.sheet-handle {
+  inline-size: 36px;
+  block-size: 4px;
+  background: var(--line);
+  border-radius: 999px;
+  margin: 0 auto .5rem;
+}
+@media (min-width: 720px) {
+  .sheet-handle { display: none; }
+}
+
+.sheet h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.sheet h3 {
+  margin: 0;
+  font-size: .82rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.sheet-section {
+  display: grid;
+  gap: .55rem;
+}
+.sheet-section + .sheet-section {
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-soft);
+}
+.sheet label {
+  display: grid;
+  gap: .25rem;
+  font-size: .85rem;
+  color: var(--ink-soft);
+}
+.sheet input { width: 100%; }
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.btn {
+  font-size: .9rem;
+  padding: .55rem .9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 500;
+  transition: border-color 120ms, background 120ms;
+}
+.btn:hover { border-color: var(--accent-soft); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+}
+.btn-primary:hover { filter: brightness(1.05); border-color: transparent; }
+.btn-danger {
+  color: var(--ramp-peak);
+  border-color: color-mix(in oklab, var(--ramp-peak) 35%, var(--line));
+}
+.btn-danger:hover { background: color-mix(in oklab, var(--ramp-peak) 8%, transparent); }
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+.btn-ghost:hover { background: var(--bg-sunk); }
+
+.sheet-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .25rem 0;
+  cursor: pointer;
+}
+.sheet-toggle .label-text {
+  display: grid;
+  gap: .15rem;
+}
+.sheet-toggle .label-text strong {
+  font-weight: 500;
+  color: var(--ink);
+  font-size: .95rem;
+}
+.sheet-toggle .label-text span {
+  color: var(--ink-faint);
+  font-size: .8rem;
+}
+
+/* Switch — built from a checkbox. Accessible, keyboard-focusable. */
+.switch {
+  --w: 42px; --h: 24px;
+  position: relative;
+  inline-size: var(--w);
+  block-size: var(--h);
+  flex-shrink: 0;
+  margin-top: .15rem;
+}
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.switch .track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background 160ms ease;
+}
+.switch .thumb {
+  position: absolute;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  inline-size: calc(var(--h) - 4px);
+  background: var(--bg-elev);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px oklch(20% 0.05 270 / 0.3);
+  transition: transform 160ms cubic-bezier(.2,.7,.2,1);
+}
+.switch input:checked ~ .track { background: var(--accent); }
+.switch input:checked ~ .thumb { transform: translateX(calc(var(--w) - var(--h))); }
+.switch input:focus-visible ~ .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .switch .track, .switch .thumb { transition: none; }
+}
+
+.sheet-msg {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--ink-faint);
+  min-height: 1.2lh;
+}
+.sheet-msg[data-tone="error"] { color: var(--ramp-peak); }
+.sheet-msg[data-tone="ok"] { color: var(--accent); }
+
+/* =========================================================================
+ * Auth screen
+ * ========================================================================= */
+
+.auth-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+  background:
+    radial-gradient(circle at 30% 20%,
+      color-mix(in oklab, var(--accent) 12%, transparent) 0%,
+      transparent 50%),
+    var(--bg);
+}
+.auth-card {
+  inline-size: 100%;
+  max-inline-size: 380px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  display: grid;
+  gap: .9rem;
+  box-shadow: var(--shadow-sheet);
+}
+.auth-card h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.auth-card p.subtitle {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: .9rem;
+}
+.auth-card .auth-form {
+  display: grid;
+  gap: .7rem;
+}
+.auth-card label {
+  display: grid;
+  gap: .25rem;
+  font-size: .85rem;
+  color: var(--ink-soft);
+}
+.auth-card .auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: .25rem;
+}
+.auth-card .switch-mode {
+  font-size: .85rem;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: .25rem;
+  border-radius: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.auth-card .switch-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+[hidden] { display: none !important; }

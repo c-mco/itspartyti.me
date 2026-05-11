@@ -4,81 +4,140 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1c1d24" media="(prefers-color-scheme: dark)" />
   <title>itspartyti.me</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body data-layout="A">
   <a class="skip-link" href="#grid">Skip to grid</a>
 
-  <header class="topbar">
-    <p class="brand" aria-label="itspartyti.me">itspartyti.me</p>
-    <button
-      class="avatar"
-      type="button"
-      aria-label="Open account and settings"
-      aria-haspopup="dialog"
-      aria-expanded="false"
-      data-avatar
-    >
-      <span aria-hidden="true" data-avatar-initial>·</span>
-    </button>
-  </header>
+  <!-- Auth screen — shown when /api/me returns 401. -->
+  <section
+    class="auth-screen"
+    data-auth-screen
+    aria-labelledby="auth-title"
+    hidden
+  >
+    <div class="auth-card">
+      <h1 id="auth-title" data-auth-title>Sign in</h1>
+      <p class="subtitle" data-auth-subtitle>Track your drinks. Quietly. For yourself.</p>
 
-  <main class="app">
-    <p class="last-logged" data-last-logged>last logged —</p>
+      <form class="auth-form" data-auth-form novalidate>
+        <label data-auth-name-field hidden>
+          Name (optional)
+          <input
+            type="text"
+            name="display_name"
+            autocomplete="name"
+            maxlength="64"
+            data-auth-name
+          />
+        </label>
+        <label>
+          Email
+          <input
+            type="email"
+            name="email"
+            autocomplete="email"
+            required
+            data-auth-email
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            data-auth-password
+            minlength="8"
+            required
+          />
+        </label>
+        <p class="sheet-msg" role="alert" data-auth-msg></p>
+        <div class="auth-actions">
+          <button type="button" class="switch-mode" data-auth-switch>Need an account?</button>
+          <button type="submit" class="btn btn-primary" data-auth-submit>Sign in</button>
+        </div>
+      </form>
+    </div>
+  </section>
 
-    <section
-      id="grid"
-      class="grid-wrap"
-      aria-labelledby="grid-heading"
-      tabindex="-1"
-    >
-      <h1 id="grid-heading" class="visually-hidden">Your drinks, day by day</h1>
-
-      <div
-        class="grid"
-        data-grid
-        data-orientation="horizontal"
-        data-range="year"
-        aria-label="Drinks logged per day, last 52 weeks"
+  <!-- Main app — shown once authenticated. -->
+  <div data-app-root hidden>
+    <header class="topbar">
+      <p class="brand" aria-label="itspartyti.me">itspartyti.me</p>
+      <button
+        class="avatar"
+        type="button"
+        aria-label="Open account and settings"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        data-avatar
       >
-        <!-- dots are rendered by app.js -->
-      </div>
+        <span aria-hidden="true" data-avatar-initial>·</span>
+      </button>
+    </header>
 
-      <div class="grid-footer" data-grid-footer hidden>
-        <button type="button" class="see-more" data-see-more>
-          See more — show the full year
+    <main class="app">
+      <p class="last-logged" data-last-logged>&nbsp;</p>
+
+      <section
+        id="grid"
+        class="grid-wrap"
+        aria-labelledby="grid-heading"
+        tabindex="-1"
+      >
+        <h1 id="grid-heading" class="visually-hidden">Your drinks, day by day</h1>
+
+        <div
+          class="grid"
+          data-grid
+          data-orientation="horizontal"
+          data-range="year"
+          aria-label="Drinks logged per day, last 52 weeks"
+        >
+          <!-- dots are rendered by app.js -->
+        </div>
+
+        <div class="grid-footer" data-grid-footer hidden>
+          <button type="button" class="see-more" data-see-more>
+            See more — show the full year
+          </button>
+        </div>
+      </section>
+
+      <div class="quick-add">
+        <button
+          type="button"
+          class="quick-add-btn"
+          data-quick-add
+          aria-label="Log one drink for today"
+        >
+          <span aria-hidden="true">+1 today</span>
         </button>
       </div>
-    </section>
 
-    <div class="quick-add">
       <button
         type="button"
-        class="quick-add-btn"
-        data-quick-add
+        class="fab"
+        data-fab
         aria-label="Log one drink for today"
       >
-        <span aria-hidden="true">+1 today</span>
+        <span aria-hidden="true">+1</span>
       </button>
-    </div>
 
-    <button
-      type="button"
-      class="fab"
-      data-fab
-      aria-label="Log one drink for today"
-    >
-      <span aria-hidden="true">+1</span>
-    </button>
+      <div
+        class="live"
+        role="status"
+        aria-live="polite"
+        data-live
+      ></div>
 
-    <div
-      class="live"
-      role="status"
-      aria-live="polite"
-      data-live
-    ></div>
-  </main>
+      <div class="toast-region" data-toast-region aria-live="polite"></div>
+    </main>
+  </div>
 
   <script src="/app.js" type="module"></script>
 </body>
