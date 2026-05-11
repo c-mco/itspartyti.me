@@ -241,8 +241,10 @@ function wireGridKeyboard() {
     if (currentIndex < 0) return;
 
     const orientation = grid.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
-    const step = orientation === 'vertical' ? 7 : 1;
-    const rowStep = orientation === 'vertical' ? 1 : 7;
+    // horizontal (auto-flow: column): index+1 = down one day, index+7 = next week (right).
+    // vertical   (auto-flow: row):    index+1 = right one day, index+7 = next week (down).
+    const step    = orientation === 'vertical' ? 1 : 7;
+    const rowStep = orientation === 'vertical' ? 7 : 1;
 
     let nextIndex = currentIndex;
     if (event.key === 'ArrowRight') nextIndex = Math.min(currentIndex + step, dots.length - 1);

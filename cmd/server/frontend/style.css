@@ -15,27 +15,34 @@
 
 :root {
   --r: 2px;  /* sharp corners throughout — the brand says no roundness */
-
-  /* Traffic-light ramp — vivid in both themes; light mode deepens them
-   * slightly below for sufficient contrast on a pale background.           */
-  --dot-zero: oklch(72% 0.19 148);  /* soft green  — logged sober */
-  --dot-low:  oklch(65% 0.23 145);  /* green       — 1 drink      */
-  --dot-mid:  oklch(73% 0.19  76);  /* amber       — 2–3 drinks   */
-  --dot-high: oklch(67% 0.21  47);  /* orange      — 4–5 drinks   */
-  --dot-peak: oklch(58% 0.24  27);  /* red         — 6+ drinks    */
 }
 
 /* Dark theme (default — deep indigo) */
 :root {
   color-scheme: dark;
-  --bg:                oklch(14% 0.04 275);
-  --surface:           oklch(19% 0.05 275);
-  --text:              oklch(90% 0.03 275);
-  --text-muted:        oklch(57% 0.05 275);
-  --accent:            oklch(68% 0.24 278);   /* vibrant indigo/violet */
-  --accent-fg:         oklch(99% 0.00   0);
-  --accent-shadow:     oklch(68% 0.24 278 / 0.40);
-  --dot-unlogged-ring: oklch(45% 0.05 275 / 0.55);
+  --bg:            oklch(14% 0.04 275);
+  --surface:       oklch(19% 0.05 275);
+  --text:          oklch(90% 0.03 275);
+  /* 61% gives ~5.2:1 against --bg, clearing the 4.5:1 AA small-text bar. */
+  --text-muted:    oklch(61% 0.05 275);
+  /* --accent: vibrant indigo for rings, borders, text highlights.
+   * --accent-btn: darker variant for button fills that hold white text;
+   *   ~5.5:1 against --accent-fg, clearing the 4.5:1 AA bar.            */
+  --accent:        oklch(68% 0.24 278);
+  --accent-btn:    oklch(52% 0.28 278);
+  --accent-fg:     oklch(99% 0.00   0);
+  --accent-shadow: oklch(52% 0.28 278 / 0.45);
+
+  /* Traffic-light ramp — vivid in dark mode. */
+  --dot-zero: oklch(72% 0.19 148);  /* soft green  — logged sober */
+  --dot-low:  oklch(65% 0.23 145);  /* green       — 1 drink      */
+  --dot-mid:  oklch(73% 0.19  76);  /* amber       — 2–3 drinks   */
+  --dot-high: oklch(67% 0.21  47);  /* orange      — 4–5 drinks   */
+  --dot-peak: oklch(58% 0.24  27);  /* red         — 6+ drinks    */
+
+  /* Solid ring colour (no alpha) so WCAG 1.4.11 3:1 contrast is reliable.
+   * oklch(58% 0.08 275) ≈ 4.6:1 against --bg in dark mode.              */
+  --dot-unlogged-ring: oklch(58% 0.08 275);
   --dot-future:        oklch(22% 0.04 275);
 }
 
@@ -43,22 +50,27 @@
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg:                oklch(97% 0.02 275);
-    --surface:           oklch(100% 0.00   0);
-    --text:              oklch(18% 0.05 275);
-    --text-muted:        oklch(48% 0.07 275);
-    --accent:            oklch(52% 0.26 278);  /* deeper for contrast on white */
-    --accent-fg:         oklch(99% 0.00   0);
-    --accent-shadow:     oklch(52% 0.26 278 / 0.30);
-    --dot-unlogged-ring: oklch(62% 0.06 275 / 0.40);
-    --dot-future:        oklch(90% 0.03 275);
+    --bg:            oklch(97% 0.02 275);
+    --surface:       oklch(100% 0.00   0);
+    --text:          oklch(18% 0.05 275);
+    --text-muted:    oklch(38% 0.07 275);
+    /* In light mode --accent and --accent-btn converge — both pass 4.5:1
+     * with white text and provide contrast on the pale background.       */
+    --accent:        oklch(52% 0.26 278);
+    --accent-btn:    oklch(52% 0.26 278);
+    --accent-fg:     oklch(99% 0.00   0);
+    --accent-shadow: oklch(52% 0.26 278 / 0.35);
 
-    /* Deeper ramp so dots have enough contrast on a pale background. */
+    /* Deeper ramp for sufficient contrast on a pale background. */
     --dot-zero: oklch(59% 0.20 148);
     --dot-low:  oklch(52% 0.24 145);
     --dot-mid:  oklch(61% 0.21  76);
     --dot-high: oklch(55% 0.22  47);
     --dot-peak: oklch(48% 0.26  27);
+
+    /* oklch(58% 0.08 275) ≈ 3.9:1 against --bg in light mode (≥3:1). */
+    --dot-unlogged-ring: oklch(58% 0.08 275);
+    --dot-future:        oklch(90% 0.03 275);
   }
 }
 
@@ -125,7 +137,7 @@ button {
   position: absolute;
   width: 1px; height: 1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
 }
 
 /* ---- page chrome -------------------------------------------------------- */
@@ -147,10 +159,8 @@ button {
 }
 
 .avatar {
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  min-inline-size: 44px; /* touch target */
-  min-block-size: 44px;
+  inline-size: 44px; /* touch target and visual size */
+  block-size: 44px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -182,8 +192,6 @@ button {
 
 .grid-wrap {
   /* The grid sizes itself; the wrapper just provides scroll context. */
-  --dot-size: 14px;
-  --dot-gap: 4px;
 }
 
 /* The grid is the visualisation. Orientation/range come from data attrs. */
@@ -201,8 +209,8 @@ button {
   grid-auto-columns: var(--dot-size);
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-snap-type: x proximity;
-  padding-block: 2px; /* room for focus rings */
+  padding-block: 2px;  /* room for focus rings */
+  padding-inline: 2px; /* room for focus rings on first/last column */
   direction: ltr;
   /* Style the scrollbar to match the theme. */
   scrollbar-color: var(--text-muted) transparent;
@@ -224,7 +232,7 @@ button {
   block-size: var(--dot-size);
   border-radius: 50%;
   position: relative;
-  background: var(--dot-zero); /* safe fallback; data-bucket overrides below */
+  background: transparent; /* data-bucket rules below supply the real fill */
 }
 
 /* Traffic-light ramp — mapped from data-bucket set by app.js bucketFor(). */
@@ -282,7 +290,7 @@ button {
     transition: background 120ms ease, color 120ms ease;
   }
   .quick-add-btn:hover {
-    background: var(--accent);
+    background: var(--accent-btn);
     color: var(--accent-fg);
   }
   .quick-add-btn:focus-visible {
@@ -303,7 +311,7 @@ button {
   place-items: center;
   font-weight: 700;
   font-size: 1.1rem;
-  background: var(--accent);
+  background: var(--accent-btn);
   color: var(--accent-fg);
   box-shadow: 0 4px 18px var(--accent-shadow);
   transition: transform 120ms ease, box-shadow 120ms ease;
@@ -313,8 +321,9 @@ button {
   box-shadow: 0 6px 24px var(--accent-shadow);
 }
 .fab:active { transform: scale(0.96); }
+/* FAB focus ring: white outline so it's visible against the accent background. */
 .fab:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-fg);
   outline-offset: 3px;
 }
 
@@ -326,6 +335,7 @@ button {
 }
 .see-more {
   padding: .5rem .9rem;
+  min-block-size: 44px; /* touch target on mobile (layout C) */
   border-radius: var(--r);
   border: 1px solid var(--text-muted);
   color: var(--text-muted);
