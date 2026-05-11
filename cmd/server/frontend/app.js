@@ -232,11 +232,18 @@ function wireGridKeyboard() {
   const grid = document.querySelector('[data-grid]');
   if (!grid) return;
 
+  const findEnabledIndex = (dots, startIndex, step) => {
+    for (let i = startIndex; i >= 0 && i < dots.length; i += step) {
+      if (!dots[i].disabled) return i;
+    }
+    return -1;
+  };
+
   grid.addEventListener('keydown', (event) => {
     const active = document.activeElement;
     if (!(active instanceof HTMLButtonElement) || !active.classList.contains('dot')) return;
 
-    const dots = Array.from(grid.querySelectorAll('.dot:not(:disabled)'));
+    const dots = Array.from(grid.querySelectorAll('.dot'));
     const currentIndex = dots.indexOf(active);
     if (currentIndex < 0) return;
 
@@ -245,16 +252,37 @@ function wireGridKeyboard() {
     const rowStep = orientation === 'vertical' ? 1 : 7;
 
     let nextIndex = currentIndex;
-    if (event.key === 'ArrowRight') nextIndex = Math.min(currentIndex + step, dots.length - 1);
-    else if (event.key === 'ArrowLeft') nextIndex = Math.max(currentIndex - step, 0);
-    else if (event.key === 'ArrowDown') nextIndex = Math.min(currentIndex + rowStep, dots.length - 1);
-    else if (event.key === 'ArrowUp') nextIndex = Math.max(currentIndex - rowStep, 0);
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = dots.length - 1;
-    else return;
+    let scanStep = 0;
+    if (event.key === 'ArrowRight') {
+      nextIndex = Math.min(currentIndex + step, dots.length - 1);
+      scanStep = 1;
+    } else if (event.key === 'ArrowLeft') {
+      nextIndex = Math.max(currentIndex - step, 0);
+      scanStep = -1;
+    } else if (event.key === 'ArrowDown') {
+      nextIndex = Math.min(currentIndex + rowStep, dots.length - 1);
+      scanStep = 1;
+    } else if (event.key === 'ArrowUp') {
+      nextIndex = Math.max(currentIndex - rowStep, 0);
+      scanStep = -1;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+      scanStep = 1;
+    } else if (event.key === 'End') {
+      nextIndex = dots.length - 1;
+      scanStep = -1;
+    } else {
+      return;
+    }
 
     event.preventDefault();
     if (nextIndex === currentIndex) return;
+
+    if (dots[nextIndex].disabled) {
+      const fallbackIndex = findEnabledIndex(dots, nextIndex, scanStep);
+      if (fallbackIndex < 0 || fallbackIndex === currentIndex) return;
+      nextIndex = fallbackIndex;
+    }
 
     dots[currentIndex].tabIndex = -1;
     dots[nextIndex].tabIndex = 0;

@@ -511,7 +511,7 @@ func TestGetStats_PctSoberDays_AllDrinking(t *testing.T) {
 	d := newTestDB(t)
 	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
 
-	// Log only drinking days for a fixed past range. pct_sober must be 0%.
+	// Log one drinking day in a fixed past range.
 	// We use dates far in the past so "today" doesn't affect the result.
 	logs := []models.Log{
 		{ID: "l1", UserID: "u1", Date: "2020-01-01", Drinks: 3},

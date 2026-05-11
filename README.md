@@ -7,14 +7,19 @@ Multi-user, self-hosted, no analytics, no tracking. The app is a mirror, not a j
 ## Features
 
 - **Dot grid heatmap** as the home screen — one dot per day, traffic-light colour ramp (green → yellow → orange → red)
-- **Bloom-in-place editor** — tap or click a dot to expand it for editing; auto-saves on blur
-- **Magnify-on-scrub** browsing, with a thumb-offset on touch so your finger never blocks what you're reading
 - **Hollow ring for unlogged days vs. filled dot for logged-zero days** — same backend treatment, honest visual distinction
 - **Today's dot has a persistent ring** so you always know where you are
-- **Auto-open today is on by default** when you've been away for a while (toggleable in Settings)
+- **A/B/C layout prototypes** available via `?layout=A|B|C` (year horizontal, year vertical, rolling 26 weeks)
+- **Keyboard-friendly grid navigation** with roving tabindex + arrow/Home/End support
 - Per-user data isolation, light + dark themes via `prefers-color-scheme`
 - Responsive, mobile-first UI
 - No external fonts, no trackers, no third-party JS, no build step
+
+## In progress
+
+- Bloom-in-place editor for per-day entries
+- Magnify-on-scrub browsing with thumb offset on touch
+- Auto-open today setting in account/settings UI
 
 ## Running locally
 
