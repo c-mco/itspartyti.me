@@ -234,7 +234,7 @@ function wireGridKeyboard() {
 
     dots[currentIndex].tabIndex = -1;
     dots[nextIndex].tabIndex = 0;
-    dots[nextIndex].focus({ preventScroll: false });
+    dots[nextIndex].focus();
   });
 }
 
