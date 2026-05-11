@@ -1,14 +1,66 @@
-/* itspartyti.me — skeleton CSS (commit 1)
+/* itspartyti.me — style.css
+ * Commit 2: CSS pass 1.
  *
- * This file is intentionally minimal. It exists to:
- *   - lay out the page (topbar, grid, FAB)
- *   - give the grid its three orientation/scroll behaviours
- *   - render a placeholder dot vs. hollow ring so the unlogged-vs-logged-0
- *     distinction is visible even before the palette pass
+ * - Design tokens: deep indigo palette, sharp corners (--r: 2px)
+ * - Light and dark themes via prefers-color-scheme
+ * - Traffic-light dot ramp keyed to data-bucket (zero → low → mid → high → peak)
+ * - Filled dot vs hollow ring (logged-0 vs unlogged) — shape distinction
+ * - Today ring → accent colour
+ * - FAB, avatar, interactive buttons → accent treatment
  *
- * Commit 2 (CSS pass 1) will replace the placeholder palette with the real
- * traffic-light ramp, light + dark themes, today ring, etc.
+ * Layout and scroll mechanics from commit 1 are unchanged.
  */
+
+/* ---- design tokens ------------------------------------------------------- */
+
+:root {
+  --r: 2px;  /* sharp corners throughout — the brand says no roundness */
+
+  /* Traffic-light ramp — vivid in both themes; light mode deepens them
+   * slightly below for sufficient contrast on a pale background.           */
+  --dot-zero: oklch(72% 0.19 148);  /* soft green  — logged sober */
+  --dot-low:  oklch(65% 0.23 145);  /* green       — 1 drink      */
+  --dot-mid:  oklch(73% 0.19  76);  /* amber       — 2–3 drinks   */
+  --dot-high: oklch(67% 0.21  47);  /* orange      — 4–5 drinks   */
+  --dot-peak: oklch(58% 0.24  27);  /* red         — 6+ drinks    */
+}
+
+/* Dark theme (default — deep indigo) */
+:root {
+  color-scheme: dark;
+  --bg:                oklch(14% 0.04 275);
+  --surface:           oklch(19% 0.05 275);
+  --text:              oklch(90% 0.03 275);
+  --text-muted:        oklch(57% 0.05 275);
+  --accent:            oklch(68% 0.24 278);   /* vibrant indigo/violet */
+  --accent-fg:         oklch(99% 0.00   0);
+  --accent-shadow:     oklch(68% 0.24 278 / 0.40);
+  --dot-unlogged-ring: oklch(45% 0.05 275 / 0.55);
+  --dot-future:        oklch(22% 0.04 275);
+}
+
+/* Light theme */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg:                oklch(97% 0.02 275);
+    --surface:           oklch(100% 0.00   0);
+    --text:              oklch(18% 0.05 275);
+    --text-muted:        oklch(48% 0.07 275);
+    --accent:            oklch(52% 0.26 278);  /* deeper for contrast on white */
+    --accent-fg:         oklch(99% 0.00   0);
+    --accent-shadow:     oklch(52% 0.26 278 / 0.30);
+    --dot-unlogged-ring: oklch(62% 0.06 275 / 0.40);
+    --dot-future:        oklch(90% 0.03 275);
+
+    /* Deeper ramp so dots have enough contrast on a pale background. */
+    --dot-zero: oklch(59% 0.20 148);
+    --dot-low:  oklch(52% 0.24 145);
+    --dot-mid:  oklch(61% 0.21  76);
+    --dot-high: oklch(55% 0.22  47);
+    --dot-peak: oklch(48% 0.26  27);
+  }
+}
 
 /* ---- reset-ish ---------------------------------------------------------- */
 
@@ -26,8 +78,8 @@ html {
 body {
   min-height: 100dvh;
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--bg);
+  color: var(--text);
 }
 
 button {
@@ -59,14 +111,16 @@ button {
 .skip-link:focus {
   left: .5rem;
   top: .5rem;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--surface);
+  color: var(--text);
   padding: .5rem .75rem;
-  outline: 2px solid CanvasText;
+  border-radius: var(--r);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   z-index: 10;
 }
 
-/* Visually-hidden but polite live region. */
+/* Visually-hidden polite live region. */
 .live {
   position: absolute;
   width: 1px; height: 1px;
@@ -86,9 +140,10 @@ button {
 
 .brand {
   margin: 0;
-  font-size: .9rem;
-  letter-spacing: .01em;
-  opacity: .7;
+  font-size: .85rem;
+  font-weight: 500;
+  letter-spacing: .04em;
+  color: var(--text-muted);
 }
 
 .avatar {
@@ -99,11 +154,17 @@ button {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  outline: 1px solid currentColor;
-  outline-offset: -1px;
-  opacity: .85;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  opacity: 0.9;
+  transition: opacity 120ms ease;
 }
-.avatar:focus-visible { outline: 2px solid CanvasText; outline-offset: 2px; }
+.avatar:hover { opacity: 1; }
+.avatar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 .app {
   display: grid;
@@ -113,8 +174,8 @@ button {
 
 .last-logged {
   margin: 0;
-  font-size: .85rem;
-  opacity: .6;
+  font-size: .82rem;
+  color: var(--text-muted);
 }
 
 /* ---- grid wrapper ------------------------------------------------------- */
@@ -142,8 +203,10 @@ button {
   overflow-y: hidden;
   scroll-snap-type: x proximity;
   padding-block: 2px; /* room for focus rings */
-  /* Keep native left-to-right scrolling behavior. */
   direction: ltr;
+  /* Style the scrollbar to match the theme. */
+  scrollbar-color: var(--text-muted) transparent;
+  scrollbar-width: thin;
 }
 
 /* B/C — vertical: 7 columns × N rows. Native vertical scroll. */
@@ -161,34 +224,41 @@ button {
   block-size: var(--dot-size);
   border-radius: 50%;
   position: relative;
-  /* Visual placeholder until commit 2 (the real palette pass). */
-  background: color-mix(in oklab, CanvasText 8%, transparent);
+  background: var(--dot-zero); /* safe fallback; data-bucket overrides below */
 }
 
-/* Logged-0 vs unlogged: communicated by SHAPE, not colour.
- * - logged (any count, incl. 0) → filled dot
- * - unlogged                    → hollow ring
- * Real colour ramp arrives in commit 2.
- */
+/* Traffic-light ramp — mapped from data-bucket set by app.js bucketFor(). */
+.dot[data-bucket="zero"] { background: var(--dot-zero); }
+.dot[data-bucket="low"]  { background: var(--dot-low);  }
+.dot[data-bucket="mid"]  { background: var(--dot-mid);  }
+.dot[data-bucket="high"] { background: var(--dot-high); }
+.dot[data-bucket="peak"] { background: var(--dot-peak); }
+
+/* Unlogged — hollow ring. Shape distinction, not just colour.
+ * Specificity matches data-bucket rules above, so order matters:
+ * this must come after the ramp rules.                              */
+.dot[data-bucket="unlogged"],
 .dot[data-logged="false"] {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, CanvasText 35%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--dot-unlogged-ring);
 }
 
-/* Today affordance — persistent ring around the dot. */
-.dot[data-today="true"] {
-  outline: 1.5px solid CanvasText;
-  outline-offset: 2px;
-}
-
+/* Future days — near-invisible ghost, overrides the hollow ring above. */
 .dot[data-future="true"] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, CanvasText 15%, transparent);
+  background: var(--dot-future);
+  box-shadow: none;
   cursor: default;
 }
 
+/* Today — accent ring so you always know where you are.
+ * outline is additive (doesn't affect background or box-shadow). */
+.dot[data-today="true"] {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .dot:focus-visible {
-  outline: 2px solid CanvasText;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   z-index: 1;
 }
@@ -204,13 +274,19 @@ button {
   }
   .quick-add-btn {
     padding: .5rem .9rem;
-    border-radius: 999px;
-    outline: 1px solid currentColor;
-    outline-offset: -1px;
+    border-radius: var(--r);
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
     font-weight: 500;
+    font-size: .9rem;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .quick-add-btn:hover {
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .quick-add-btn:focus-visible {
-    outline: 2px solid CanvasText;
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
   .fab { display: none; }
@@ -225,13 +301,20 @@ button {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-weight: 600;
-  background: CanvasText;
-  color: Canvas;
-  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  font-weight: 700;
+  font-size: 1.1rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 4px 18px var(--accent-shadow);
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
+.fab:hover {
+  transform: scale(1.06);
+  box-shadow: 0 6px 24px var(--accent-shadow);
+}
+.fab:active { transform: scale(0.96); }
 .fab:focus-visible {
-  outline: 2px solid CanvasText;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -243,16 +326,19 @@ button {
 }
 .see-more {
   padding: .5rem .9rem;
-  border-radius: 999px;
-  outline: 1px solid currentColor;
-  outline-offset: -1px;
+  border-radius: var(--r);
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
   font-size: .9rem;
-  opacity: .85;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.see-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .see-more:focus-visible {
-  outline: 2px solid CanvasText;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
-  opacity: 1;
 }
 
 /* ---- reduced motion ---------------------------------------------------- */
