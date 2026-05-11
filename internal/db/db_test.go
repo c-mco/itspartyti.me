@@ -311,6 +311,76 @@ func TestCalculateStreaks(t *testing.T) {
 			wantCur: 0,
 			wantLng: 6,
 		},
+		{
+			// Streak spans the Dec 31 → Jan 1 year boundary.
+			// Dec 30 = drink, Dec 31–Jan 3 = sober (4 days), today = Jan 3.
+			name: "streak spanning year boundary (current)",
+			records: []dayRecord{
+				{"2025-01-03", 0},
+				{"2025-01-02", 0},
+				{"2025-01-01", 0},
+				{"2024-12-31", 0},
+				{"2024-12-30", 2},
+			},
+			today:   "2025-01-03",
+			wantCur: 4,
+			wantLng: 4,
+		},
+		{
+			// Longest streak spans year boundary. Dec 28 = drink, Dec 29 – Jan 3 = 6 sober,
+			// Jan 4 = drink, Jan 5 = today (sober, current=1).
+			name: "longest streak spanning year boundary",
+			records: []dayRecord{
+				{"2025-01-05", 0},
+				{"2025-01-04", 2},
+				{"2025-01-03", 0},
+				{"2025-01-02", 0},
+				{"2025-01-01", 0},
+				{"2024-12-31", 0},
+				{"2024-12-30", 0},
+				{"2024-12-29", 0},
+				{"2024-12-28", 3},
+			},
+			today:   "2025-01-05",
+			wantCur: 1,
+			wantLng: 6,
+		},
+		{
+			// Today is unlogged — treated as sober, extends the current streak.
+			// This is the core "don't punish for not logging a zero" invariant.
+			name: "today unlogged extends current streak",
+			records: []dayRecord{
+				{"2024-01-09", 0},
+				{"2024-01-08", 0},
+				// today (2024-01-10) is not in records at all
+			},
+			today:   "2024-01-10",
+			wantCur: 3, // Jan 8, 9, and today (unlogged = sober)
+			wantLng: 3,
+		},
+		{
+			// Single drinking day, nothing else logged. Today is unlogged.
+			// Current streak = 0 (drinking day is today). Longest = 0.
+			name: "only entry is today: a drinking day",
+			records: []dayRecord{
+				{"2024-01-10", 4},
+			},
+			today:   "2024-01-10",
+			wantCur: 0,
+			wantLng: 0,
+		},
+		{
+			// Single drinking day in the past. Today is unlogged (sober).
+			// Current streak = days since that drink day (all unlogged = sober).
+			// Jan 5 = drink, Jan 6–10 = unlogged sober = 5 days current.
+			name: "drinking day in past, today unlogged sober",
+			records: []dayRecord{
+				{"2024-01-05", 3},
+			},
+			today:   "2024-01-10",
+			wantCur: 5,
+			wantLng: 5,
+		},
 	}
 
 	for _, tc := range tests {
@@ -352,5 +422,127 @@ func TestCleanExpiredSessions(t *testing.T) {
 	got, _ = d.GetSession("valid")
 	if got == nil {
 		t.Error("valid session deleted")
+	}
+}
+
+// ===== IncrementDrinks =====
+
+func TestIncrementDrinks_CreatesEntry(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	count, err := d.IncrementDrinks("u1", "2024-01-15", "id1")
+	if err != nil {
+		t.Fatalf("first increment: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("first increment: got %d want 1", count)
+	}
+}
+
+func TestIncrementDrinks_IncrementsExistingEntry(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	_, _ = d.IncrementDrinks("u1", "2024-01-15", "id1")
+
+	count, err := d.IncrementDrinks("u1", "2024-01-15", "id2")
+	if err != nil {
+		t.Fatalf("second increment: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("second increment: got %d want 2", count)
+	}
+}
+
+func TestIncrementDrinks_MultipleCallsAccumulate(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	for i := 1; i <= 5; i++ {
+		count, err := d.IncrementDrinks("u1", "2024-01-15", "id"+string(rune('0'+i)))
+		if err != nil {
+			t.Fatalf("increment %d: %v", i, err)
+		}
+		if count != i {
+			t.Errorf("increment %d: got %d want %d", i, count, i)
+		}
+	}
+}
+
+func TestIncrementDrinks_DoesNotAffectOtherDates(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	_, _ = d.IncrementDrinks("u1", "2024-01-15", "id1")
+	_, _ = d.IncrementDrinks("u1", "2024-01-15", "id2")
+
+	// Different date starts at 1.
+	count, err := d.IncrementDrinks("u1", "2024-01-16", "id3")
+	if err != nil {
+		t.Fatalf("different date increment: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("different date should start at 1, got %d", count)
+	}
+}
+
+func TestIncrementDrinks_DataIsolation(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+	_ = d.CreateUser(&models.User{ID: "u2", Email: "bob@test.com", PasswordHash: "h"})
+
+	_, _ = d.IncrementDrinks("u1", "2024-01-15", "id1")
+	_, _ = d.IncrementDrinks("u1", "2024-01-15", "id2")
+
+	// Bob's count on the same date should be 1, not 3.
+	count, err := d.IncrementDrinks("u2", "2024-01-15", "id3")
+	if err != nil {
+		t.Fatalf("bob increment: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("bob's count: got %d want 1 (should be isolated from alice)", count)
+	}
+}
+
+// ===== GetStats: pct_sober_days sanity check =====
+
+func TestGetStats_PctSoberDays_AllDrinking(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	// Log one drinking day in a fixed past range.
+	// We use dates far in the past so "today" doesn't affect the result.
+	logs := []models.Log{
+		{ID: "l1", UserID: "u1", Date: "2020-01-01", Drinks: 3},
+	}
+	for i := range logs {
+		_ = d.UpsertLog(&logs[i])
+	}
+
+	stats, err := d.GetStats("u1")
+	if err != nil {
+		t.Fatalf("get stats: %v", err)
+	}
+	// Only 1 day logged, it's a drinking day. Calendar days from 2020-01-01 to
+	// today is > 1. drinkingDays = 1. soberDays = totalCalendarDays - 1 > 0.
+	// So pctSober must be > 0 (because unlogged days between 2020-01-01 and today
+	// are treated as sober). Just sanity-check it's in [0, 100].
+	if stats.PctSoberDays < 0 || stats.PctSoberDays > 100 {
+		t.Errorf("pct_sober_days out of range: %v", stats.PctSoberDays)
+	}
+}
+
+func TestGetStats_PctSoberDays_Empty(t *testing.T) {
+	d := newTestDB(t)
+	_ = d.CreateUser(&models.User{ID: "u1", Email: "alice@test.com", PasswordHash: "h"})
+
+	stats, err := d.GetStats("u1")
+	if err != nil {
+		t.Fatalf("get stats: %v", err)
+	}
+	// No logs → pctSober is 0 (no data to compute from).
+	if stats.PctSoberDays != 0 {
+		t.Errorf("empty: pct_sober_days should be 0, got %v", stats.PctSoberDays)
 	}
 }
