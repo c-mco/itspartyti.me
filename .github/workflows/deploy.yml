@@ -3,15 +3,23 @@ name: deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+
+# Serialize deploys per environment. Prod never races itself; each PR
+# serializes against itself but PRs don't block each other.
+concurrency:
+  group: deploy-${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || 'prod' }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
         with:
           go-version-file: go.mod
           cache: true
@@ -19,33 +27,86 @@ jobs:
       - name: test
         run: go test ./...
 
+      - name: compute deploy vars
+        id: vars
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse --short HEAD)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            {
+              echo "version=${SHA}-preview"
+              echo "target=itspartyti.me-preview"
+              echo "service=me.itspartyti.preview"
+              echo "port=8091"
+              echo "label=preview"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "version=${SHA}"
+              echo "target=itspartyti.me"
+              echo "service=me.itspartyti.server"
+              echo "port=8090"
+              echo "label=prod"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: build
         run: |
+          set -euo pipefail
           GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build \
-            -ldflags "-X main.version=$(git rev-parse --short HEAD)" \
-            -o server \
+            -ldflags "-X main.version=${{ steps.vars.outputs.version }}" \
+            -o server.new \
             ./cmd/server
 
       - name: copy binary
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: 2222
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          source: server
-          target: ~/itspartyti.me/
+          source: server.new
+          target: ~/${{ steps.vars.outputs.target }}/
 
-      - name: restart and verify
-        uses: appleboy/ssh-action@v1
+      - name: swap, restart, verify
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          TARGET: ${{ steps.vars.outputs.target }}
+          SERVICE: ${{ steps.vars.outputs.service }}
+          PORT: ${{ steps.vars.outputs.port }}
+          LABEL: ${{ steps.vars.outputs.label }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: 2222
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          envs: TARGET,SERVICE,PORT,LABEL
           script: |
-            chmod +x ~/itspartyti.me/server
-            launchctl kickstart -k gui/$(id -u)/me.itspartyti.server
-            sleep 2
-            HEALTH=$(curl -sf http://localhost:8090/health) || (echo "health check failed" && exit 1)
-            echo "deployed: $HEALTH"
+            set -euo pipefail
+            cd ~/"$TARGET"
+
+            # Atomic-ish swap on the same filesystem. Keep the previous
+            # binary as a one-step rollback target.
+            chmod +x server.new
+            if [ -f server ]; then
+              mv -f server server.prev
+            fi
+            mv -f server.new server
+
+            launchctl kickstart -k "gui/$(id -u)/$SERVICE"
+
+            # Real health check: poll for up to 30s instead of guessing.
+            for i in $(seq 1 30); do
+              if HEALTH=$(curl -sf "http://localhost:${PORT}/health"); then
+                echo "deployed ${LABEL}: $HEALTH"
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo "health check failed after 30s; rolling back"
+            if [ -f server.prev ]; then
+              mv -f server.prev server
+              launchctl kickstart -k "gui/$(id -u)/$SERVICE" || true
+            fi
+            exit 1
