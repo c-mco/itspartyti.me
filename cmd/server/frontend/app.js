@@ -236,8 +236,24 @@ function boot() {
   wireSeeMore();
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot, { once: true });
-} else {
-  boot();
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
 }
+
+// Named exports for unit testing — harmless in a browser module context.
+export {
+  isoDate,
+  mondayIndex,
+  startOfDay,
+  mondayOnOrBefore,
+  longDate,
+  seededRand,
+  mockEntry,
+  buildDays,
+  ariaForDay,
+  bucketFor,
+};
