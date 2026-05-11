@@ -828,3 +828,179 @@ func TestRateLimiter_DifferentIPs(t *testing.T) {
 		t.Error("different IP should be allowed")
 	}
 }
+
+// ===== Rate limit via HTTP (handler level) =====
+
+func TestRateLimit_Register_Via_Handler(t *testing.T) {
+	h, _ := newTestHandler(t)
+
+	// Send rateLimitMax requests with a missing email body — validation fails
+	// fast (no bcrypt), but the rate limiter still ticks for each request.
+	for i := 0; i < rateLimitMax; i++ {
+		doRequest(t, h.Register, http.MethodPost, "/api/register",
+			jsonBody(t, map[string]string{})) // missing email → 400, but limiter ticks
+	}
+
+	// The (rateLimitMax+1)-th request from the same IP must be rate-limited.
+	rr := doRequest(t, h.Register, http.MethodPost, "/api/register",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 after rate limit exhausted, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRateLimit_Login_Via_Handler(t *testing.T) {
+	h, _ := newTestHandler(t)
+
+	// Exhaust the limit with empty-body requests (fast, no bcrypt).
+	for i := 0; i < rateLimitMax; i++ {
+		doRequest(t, h.Login, http.MethodPost, "/api/login",
+			jsonBody(t, map[string]string{}))
+	}
+
+	rr := doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "password123"}))
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 after rate limit exhausted, got %d", rr.Code)
+	}
+}
+
+// ===== Login error-message parity (username enumeration prevention) =====
+
+func TestLogin_ErrorMessage_DoesNotLeakUsernameExistence(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+
+	// Wrong password for a real account.
+	rr1 := doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "alice@test.com", "password": "wrongpassword"}))
+
+	// Unknown user (account does not exist).
+	rr2 := doRequest(t, h.Login, http.MethodPost, "/api/login",
+		jsonBody(t, map[string]string{"email": "nobody@test.com", "password": "wrongpassword"}))
+
+	if rr1.Code != http.StatusUnauthorized {
+		t.Errorf("wrong password: expected 401, got %d", rr1.Code)
+	}
+	if rr2.Code != http.StatusUnauthorized {
+		t.Errorf("unknown user: expected 401, got %d", rr2.Code)
+	}
+
+	// Both must return the identical error message to prevent username enumeration.
+	var e1, e2 map[string]string
+	if err := json.NewDecoder(rr1.Body).Decode(&e1); err != nil {
+		t.Fatalf("decode wrong-password response: %v", err)
+	}
+	if err := json.NewDecoder(rr2.Body).Decode(&e2); err != nil {
+		t.Fatalf("decode unknown-user response: %v", err)
+	}
+	if e1["error"] != e2["error"] {
+		t.Errorf("error messages differ — may leak whether username exists:\n  wrong-password: %q\n  unknown-user:   %q",
+			e1["error"], e2["error"])
+	}
+}
+
+// ===== AddDrink =====
+
+func TestAddDrink_RequiresAuth(t *testing.T) {
+	h, _ := newTestHandler(t)
+	rr := doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAddDrink_WrongMethod(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.AddDrink, http.MethodGet, "/api/drinks/add", nil, cookie)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status: got %d want %d", rr.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestAddDrink_HappyPath(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil, cookie)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var result map[string]any
+	parseJSON(t, rr, &result)
+	if result["drinks"] == nil {
+		t.Fatal("response missing 'drinks' field")
+	}
+	if result["drinks"].(float64) != 1 {
+		t.Errorf("drinks: got %v want 1", result["drinks"])
+	}
+	if result["date"] == nil {
+		t.Error("response missing 'date' field")
+	}
+}
+
+func TestAddDrink_Increments(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	// First call: creates entry with drinks=1.
+	doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil, cookie)
+
+	// Second call: increments to 2.
+	rr := doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil, cookie)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("second add: status %d", rr.Code)
+	}
+
+	var result map[string]any
+	parseJSON(t, rr, &result)
+	if result["drinks"].(float64) != 2 {
+		t.Errorf("drinks after two increments: got %v want 2", result["drinks"])
+	}
+}
+
+func TestAddDrink_ReturnsToday(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	cookie := loginUser(t, h, "alice@test.com", "password123")
+
+	rr := doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil, cookie)
+	var result map[string]any
+	parseJSON(t, rr, &result)
+
+	// The returned date must be a valid YYYY-MM-DD string.
+	date, ok := result["date"].(string)
+	if !ok {
+		t.Fatalf("date field missing or not a string: %v", result["date"])
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		t.Errorf("date field is not a valid YYYY-MM-DD: %q (%v)", date, err)
+	}
+}
+
+// ===== Data isolation for AddDrink =====
+
+func TestAddDrink_DataIsolation(t *testing.T) {
+	h, _ := newTestHandler(t)
+	registerUser(t, h, "alice@test.com", "password123")
+	registerUser(t, h, "bob@test.com", "password456")
+	aliceCookie := loginUser(t, h, "alice@test.com", "password123")
+	bobCookie := loginUser(t, h, "bob@test.com", "password456")
+
+	// Alice adds a drink.
+	doRequest(t, h.AddDrink, http.MethodPost, "/api/drinks/add", nil, aliceCookie)
+
+	// Bob's log should still be empty.
+	rr := doRequest(t, h.Logs, http.MethodGet, "/api/logs", nil, bobCookie)
+	var logs []any
+	parseJSON(t, rr, &logs)
+	if len(logs) != 0 {
+		t.Errorf("bob should see 0 logs after alice adds a drink, got %d", len(logs))
+	}
+}
