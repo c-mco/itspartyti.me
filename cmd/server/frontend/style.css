@@ -142,7 +142,7 @@ button {
   overflow-y: hidden;
   scroll-snap-type: x proximity;
   padding-block: 2px; /* room for focus rings */
-  /* Anchor to the right so today is visible by default. */
+  /* Keep native left-to-right scrolling behavior. */
   direction: ltr;
 }
 

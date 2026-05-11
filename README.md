@@ -11,7 +11,7 @@ Multi-user, self-hosted, no analytics, no tracking. The app is a mirror, not a j
 - **Magnify-on-scrub** browsing, with a thumb-offset on touch so your finger never blocks what you're reading
 - **Hollow ring for unlogged days vs. filled dot for logged-zero days** — same backend treatment, honest visual distinction
 - **Today's dot has a persistent ring** so you always know where you are
-- **Opt-in auto-open today** when you've been away for a while (on by default, toggleable)
+- **Auto-open today is on by default** when you've been away for a while (toggleable in Settings)
 - Per-user data isolation, light + dark themes via `prefers-color-scheme`
 - Responsive, mobile-first UI
 - No external fonts, no trackers, no third-party JS, no build step
