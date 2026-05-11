@@ -28,7 +28,7 @@ That's real. That matters. Some user out there is going to open this app on a ba
 
 - **Backend**: Go standard library + `modernc.org/sqlite` (pure Go, no CGo). Don't add frameworks.
 - **Frontend**: Vanilla HTML/CSS/JS. **No build step. No bundler. No framework. No node_modules.** Edit `cmd/server/frontend/` directly.
-- **Charts**: Chart.js via CDN — already there, use it.
+- **Charts/visualisation**: hand-rolled with HTML/CSS/SVG. **No Chart.js, no charting libraries.** The dot grid *is* the visualisation.
 - **Deployment**: GitHub Actions → SCP binary to Mac → launchctl restart.
 
 There are three frontend files and that's kind of the whole point:

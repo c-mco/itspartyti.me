@@ -1,17 +1,20 @@
 # itspartyti.me
 
-A personal drink tracking web app. Log your daily alcohol consumption, visualise it as a heatmap calendar, and view personal stats — streaks, averages, weekly trends.
+A personal drink tracking web app. Log your daily alcohol consumption and recognise your own patterns on a dense, year-at-a-glance dot grid.
 
-Multi-user, self-hosted, no analytics, no tracking.
+Multi-user, self-hosted, no analytics, no tracking. The app is a mirror, not a judge.
 
 ## Features
 
-- Monthly heatmap calendar (green → yellow → orange → red)
-- Current and longest sober streaks
-- Weekly trend bar chart (last 12 weeks)
-- Per-user data isolation
+- **Dot grid heatmap** as the home screen — one dot per day, traffic-light colour ramp (green → yellow → orange → red)
+- **Bloom-in-place editor** — tap or click a dot to expand it for editing; auto-saves on blur
+- **Magnify-on-scrub** browsing, with a thumb-offset on touch so your finger never blocks what you're reading
+- **Hollow ring for unlogged days vs. filled dot for logged-zero days** — same backend treatment, honest visual distinction
+- **Today's dot has a persistent ring** so you always know where you are
+- **Auto-open today is on by default** when you've been away for a while (toggleable in Settings)
+- Per-user data isolation, light + dark themes via `prefers-color-scheme`
 - Responsive, mobile-first UI
-- No external fonts or trackers (Chart.js via CDN only)
+- No external fonts, no trackers, no third-party JS, no build step
 
 ## Running locally
 
@@ -62,8 +65,7 @@ go test ./internal/... -cover
 
 - **Backend**: Go standard library + `modernc.org/sqlite` (pure Go, no CGo)
 - **Database**: SQLite with WAL mode
-- **Frontend**: Vanilla HTML/CSS/JS, no build step
-- **Charts**: Chart.js via CDN
+- **Frontend**: Vanilla HTML/CSS/JS, no build step, no framework, no bundler, no node_modules
 
 ## Security
 

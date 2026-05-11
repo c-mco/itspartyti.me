@@ -2,35 +2,84 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
   <title>itspartyti.me</title>
-  <style>
-    :root { color-scheme: dark; }
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: #0d0e1f;
-      color: #e6e6f0;
-      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    }
-    main {
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 2rem;
-      text-align: center;
-    }
-    h1 { margin: 0 0 .5rem; font-weight: 600; letter-spacing: -0.01em; }
-    p  { margin: 0; opacity: .7; }
-    code { background: rgba(255,255,255,.06); padding: .1em .35em; border-radius: 2px; }
-  </style>
+  <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
-  <main>
-    <div>
-      <h1>itspartyti.me</h1>
-      <p>UI is being rebuilt. The API at <code>/api/*</code> is still alive.</p>
+<body data-layout="A">
+  <a class="skip-link" href="#grid">Skip to grid</a>
+
+  <header class="topbar">
+    <p class="brand" aria-label="itspartyti.me">itspartyti.me</p>
+    <button
+      class="avatar"
+      type="button"
+      aria-label="Open account and settings"
+      aria-haspopup="dialog"
+      aria-expanded="false"
+      data-avatar
+    >
+      <span aria-hidden="true" data-avatar-initial>·</span>
+    </button>
+  </header>
+
+  <main class="app">
+    <p class="last-logged" data-last-logged>last logged —</p>
+
+    <section
+      id="grid"
+      class="grid-wrap"
+      aria-labelledby="grid-heading"
+      tabindex="-1"
+    >
+      <h1 id="grid-heading" class="visually-hidden">Your drinks, day by day</h1>
+
+      <div
+        class="grid"
+        data-grid
+        data-orientation="horizontal"
+        data-range="year"
+        aria-label="Drinks logged per day, last 52 weeks"
+      >
+        <!-- dots are rendered by app.js -->
+      </div>
+
+      <div class="grid-footer" data-grid-footer hidden>
+        <button type="button" class="see-more" data-see-more>
+          See more — show the full year
+        </button>
+      </div>
+    </section>
+
+    <div class="quick-add">
+      <button
+        type="button"
+        class="quick-add-btn"
+        data-quick-add
+        aria-label="Log one drink for today"
+      >
+        <span aria-hidden="true">+1 today</span>
+      </button>
     </div>
+
+    <button
+      type="button"
+      class="fab"
+      data-fab
+      aria-label="Log one drink for today"
+    >
+      <span aria-hidden="true">+1</span>
+    </button>
+
+    <div
+      class="live"
+      role="status"
+      aria-live="polite"
+      data-live
+    ></div>
   </main>
+
+  <script src="/app.js" type="module"></script>
 </body>
 </html>

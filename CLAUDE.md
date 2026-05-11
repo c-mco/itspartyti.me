@@ -61,13 +61,23 @@ Three tables: `users`, `logs`, `sessions`. The `username` column in `users` stor
 
 Cookie-based sessions (`session` cookie, HttpOnly, 30-day expiry). `requireAuth` validates the cookie and returns the session; handlers abort with 401 if nil. Rate limiting (10 req/min per IP) is applied to `/api/register` and `/api/login`.
 
-### Streak logic
+### Streak logic (backend only)
 
 `calculateStreaks` in `db.go` walks calendar days (not just logged days). **Unlogged days are treated as sober** — the user doesn't need to log a zero to keep their streak alive. This is intentional and consistent across streak calculation and `pct_sober_days`. Do not change this behaviour without explicit instruction.
 
+Note: per the UI rebuild (see `UI_IDEAS.md`), streaks are no longer surfaced in the UI. The backend calculation stays as-is — it may be used for internal logic or future features — but no new UI should display a streak count.
+
 ## Design conventions
 
-- Deep indigo dark theme, sharp corners (`--r: 2px`), vibrant cell fills
-- Color-only data encoding on the year grid — drink counts are not displayed as numbers
-- The scrub gesture on the year grid is intentionally undiscoverable (no tooltip/hint)
-- Week starts on Monday throughout (both backend stats and frontend display)
+See `UI_IDEAS.md` for the full UI spec. Key invariants for code working in `cmd/server/frontend/`:
+
+- The dot grid is the home screen. Traffic-light colour ramp. **No numbers on cells** — counts live only in the magnify label and the bloom card.
+- **Logged-zero vs. unlogged** is communicated by *shape*, not colour: filled soft-green dot vs. hollow ring. Backend treatment is identical.
+- **Today's dot** has a persistent ring affordance.
+- **Selection split by input device**: mouse = click to open a dot; touch = scrub to magnify, release-over-dot to open. Drag off-grid cancels.
+- **Neighbourhood magnify** (dock-style) on hover/scrub. On touch, the magnified dot and floating label are **offset above the finger** so the thumb never occludes them. Respect `prefers-reduced-motion`.
+- **Bloom-in-place editor** — opening a dot expands it inline. Auto-save on blur or after 800ms of inactivity. No Save button. Use `aria-live="polite"` for the `saved ✓` indicator.
+- **Grid orientation A/B/C prototype**: build the grid as a single component that takes `orientation` (`horizontal | vertical`) and `range` (`year | rolling26`) props. Render all three layouts behind a hidden URL param: `?layout=A` (year, weeks-as-columns), `?layout=B` (year, weeks-as-rows), `?layout=C` (rolling 26 weeks with "see more"). Same data, three layouts, judged with real pixels.
+- **Settings live behind a small avatar/initial in the corner**, opening a sheet on mobile / popover on desktop. Includes account actions and a Settings section (first toggle: "Auto-open today when I've been away", on by default).
+- Week starts on Monday throughout (backend stats and frontend display).
+- No Chart.js, no framework, no build step. Vanilla only.
