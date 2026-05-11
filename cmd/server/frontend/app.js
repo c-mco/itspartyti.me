@@ -1,10 +1,9 @@
 // itspartyti.me — frontend
 //
-// COMMIT 1: grid skeleton.
-// This file renders the dot grid in semantic HTML, with deterministic mock
-// data, and lets Cam flip between the three A/B/C layout prototypes via
-// the hidden `?layout=A|B|C` URL param. No interaction (magnify, bloom,
-// API) yet — those come in commits 3 and 4.
+// COMMIT 3: interaction pass.
+// Grid A/B/C rendering stays intact while we add the JS interaction layer:
+// neighbourhood magnify, touch scrub-and-release-to-open, and a bloom editor
+// scaffold with autosave behavior (local-only for now; API wiring comes later).
 
 const LAYOUTS = {
   A: { orientation: 'horizontal', range: 'year',      label: 'A — year, weeks as columns' },
@@ -13,8 +12,24 @@ const LAYOUTS = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const AUTO_SAVE_IDLE_MS = 800;
+const BLUR_SAVE_GRACE_MS = 300;
+const NOTE_MAX = 500;
+const MAGNIFY_RADIUS = 2;
+const TOUCH_LABEL_OFFSET_X = -20;
+const TOUCH_LABEL_OFFSET_Y = -56;
 const WEEKDAY_LONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTH_LONG   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+const APP_STATE = {
+  entriesByDate: new Map(),
+  openDate: null,
+  saveTimer: null,
+  blurTimer: null,
+  saveTick: 0,
+  activeTouchPointerId: null,
+  suppressClickUntil: 0,
+};
 
 // --- date helpers ---------------------------------------------------------
 
@@ -48,6 +63,38 @@ function mondayOnOrBefore(d) {
 /** "Monday 11 May 2026". */
 function longDate(d) {
   return `${WEEKDAY_LONG[d.getDay()]} ${d.getDate()} ${MONTH_LONG[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function parseIsoDate(iso) {
+  const [y, m, d] = iso.split('-').map((v) => Number(v));
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function clampDrinkCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(30, Math.round(n)));
+}
+
+function normalizeEntry(entry) {
+  if (!entry || entry.logged !== true) {
+    return { logged: false, count: 0, note: '' };
+  }
+  return {
+    logged: true,
+    count: clampDrinkCount(entry.count ?? 0),
+    note: String(entry.note ?? ''),
+  };
+}
+
+function entryForAria(entry) {
+  return entry.logged ? { logged: true, count: entry.count } : { logged: false };
+}
+
+function countSummary(entry) {
+  if (!entry.logged) return 'not logged';
+  if (entry.count === 0) return 'no drinks';
+  return `${entry.count} ${entry.count === 1 ? 'drink' : 'drinks'}`;
 }
 
 // --- mock data ------------------------------------------------------------
@@ -145,8 +192,26 @@ function bucketFor(entry) {
   return 'peak';
 }
 
+function magnifyWeight(distance, reducedMotion = false) {
+  if (distance < 0 || distance > MAGNIFY_RADIUS) return 0;
+  if (reducedMotion) return distance === 0 ? 1 : 0;
+  if (distance === 0) return 1;
+  if (distance === 1) return 0.6;
+  return 0.24;
+}
+
+function computeMagnifyLevels(centerIndex, total, reducedMotion = false) {
+  const levels = Array.from({ length: total }, () => 0);
+  if (centerIndex < 0 || centerIndex >= total) return levels;
+  for (let i = 0; i < total; i++) {
+    levels[i] = magnifyWeight(Math.abs(i - centerIndex), reducedMotion);
+  }
+  return levels;
+}
+
 function renderGrid(gridEl, { orientation, range }, today) {
   const { days, weeks } = buildDays(range, today);
+  const entriesByDate = new Map();
 
   gridEl.dataset.orientation = orientation;
   gridEl.dataset.range = range;
@@ -168,7 +233,10 @@ function renderGrid(gridEl, { orientation, range }, today) {
     const iso = isoDate(date);
     const isToday = iso === todayIso;
     const isFuture = date > today;
-    const entry = mockEntry(date, today);
+    const existing = APP_STATE.entriesByDate.get(iso);
+    const seeded = normalizeEntry(mockEntry(date, today));
+    const entry = normalizeEntry(existing ?? seeded);
+    entriesByDate.set(iso, entry);
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -182,14 +250,23 @@ function renderGrid(gridEl, { orientation, range }, today) {
       btn.dataset.future = 'true';
       btn.disabled = true;
     }
-    btn.setAttribute('aria-label', ariaForDay(date, entry, isToday, isFuture));
+    btn.setAttribute('aria-label', ariaForDay(date, entryForAria(entry), isToday, isFuture));
     // CSS uses ::before/::after for the dot/ring; keep button text empty.
     frag.appendChild(btn);
   }
 
   gridEl.replaceChildren(frag);
+  APP_STATE.entriesByDate = entriesByDate;
   setupRovingTabindex(gridEl);
   scrollTodayIntoView(gridEl);
+  if (APP_STATE.openDate) {
+    const openDot = gridEl.querySelector(`.dot[data-date="${APP_STATE.openDate}"]`);
+    if (!openDot || openDot.disabled) {
+      closeBloomEditor();
+    } else {
+      openDay(openDot, { focusEditor: false });
+    }
+  }
 }
 
 /**
@@ -292,6 +369,385 @@ function wireGridKeyboard() {
   });
 }
 
+function isReducedMotion() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function setDotFromEntry(dot, entry) {
+  const normalized = normalizeEntry(entry);
+  const isToday = dot.dataset.today === 'true';
+  const isFuture = dot.dataset.future === 'true';
+  dot.dataset.logged = normalized.logged ? 'true' : 'false';
+  dot.dataset.bucket = bucketFor(normalized);
+  if (normalized.logged) dot.dataset.count = String(normalized.count);
+  else delete dot.dataset.count;
+  dot.setAttribute(
+    'aria-label',
+    ariaForDay(parseIsoDate(dot.dataset.date), entryForAria(normalized), isToday, isFuture),
+  );
+}
+
+function ensureMagnifyLabel() {
+  let label = document.querySelector('[data-magnify-label]');
+  if (label) return label;
+  label = document.createElement('div');
+  label.dataset.magnifyLabel = 'true';
+  label.hidden = true;
+  label.style.position = 'fixed';
+  label.style.left = '0';
+  label.style.top = '0';
+  label.style.transform = 'translate(-9999px,-9999px)';
+  label.style.pointerEvents = 'none';
+  label.style.zIndex = '30';
+  document.body.appendChild(label);
+  return label;
+}
+
+function clearMagnify(grid) {
+  const dots = Array.from(grid.querySelectorAll('.dot'));
+  dots.forEach((dot) => {
+    delete dot.dataset.magnify;
+    delete dot.dataset.magnified;
+  });
+  const label = ensureMagnifyLabel();
+  label.hidden = true;
+}
+
+function setMagnify(grid, centerDot, point = null) {
+  const dots = Array.from(grid.querySelectorAll('.dot'));
+  const centerIndex = dots.indexOf(centerDot);
+  if (centerIndex < 0) return;
+  const reduced = isReducedMotion();
+  const levels = computeMagnifyLevels(centerIndex, dots.length, reduced);
+
+  dots.forEach((dot, idx) => {
+    const level = levels[idx];
+    if (level > 0) {
+      dot.dataset.magnify = String(level);
+      if (idx === centerIndex) dot.dataset.magnified = 'true';
+      else delete dot.dataset.magnified;
+    } else {
+      delete dot.dataset.magnify;
+      delete dot.dataset.magnified;
+    }
+  });
+
+  const label = ensureMagnifyLabel();
+  const iso = centerDot.dataset.date;
+  const entry = APP_STATE.entriesByDate.get(iso) ?? { logged: false, count: 0, note: '' };
+  const date = parseIsoDate(iso);
+  label.textContent = `${longDate(date)} · ${countSummary(entry)}`;
+  label.hidden = false;
+  const rect = centerDot.getBoundingClientRect();
+  const x = point ? point.clientX + TOUCH_LABEL_OFFSET_X : rect.left + (rect.width / 2);
+  const y = point ? point.clientY + TOUCH_LABEL_OFFSET_Y : rect.top - 12;
+  label.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+}
+
+function dotAtPoint(grid, x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const dot = el.closest('.dot');
+  if (!(dot instanceof HTMLButtonElement)) return null;
+  if (!grid.contains(dot)) return null;
+  return dot;
+}
+
+function ensureBloomHost() {
+  let host = document.querySelector('[data-bloom-host]');
+  if (host) return host;
+  host = document.createElement('section');
+  host.dataset.bloomHost = 'true';
+  host.hidden = true;
+  const app = document.querySelector('.app');
+  const quickAdd = document.querySelector('.quick-add');
+  if (app && quickAdd) app.insertBefore(host, quickAdd);
+  else if (app) app.appendChild(host);
+  return host;
+}
+
+function announceSaved() {
+  const live = document.querySelector('[data-live]');
+  if (!live) return;
+  APP_STATE.saveTick += 1;
+  live.textContent = `saved ✓ (${APP_STATE.saveTick})`;
+}
+
+function scheduleSave(delay = AUTO_SAVE_IDLE_MS) {
+  if (APP_STATE.saveTimer) clearTimeout(APP_STATE.saveTimer);
+  APP_STATE.saveTimer = setTimeout(() => {
+    APP_STATE.saveTimer = null;
+    announceSaved();
+    const saved = document.querySelector('[data-bloom-saved]');
+    if (!saved) return;
+    saved.hidden = false;
+    if (saved._hideTimer) clearTimeout(saved._hideTimer);
+    saved._hideTimer = setTimeout(() => {
+      saved.hidden = true;
+    }, 1200);
+  }, delay);
+}
+
+function updateBloomCharCount(host, noteLength) {
+  const countEl = host.querySelector('[data-note-count]');
+  if (!countEl) return;
+  countEl.textContent = `${noteLength}/${NOTE_MAX}`;
+  countEl.hidden = noteLength < NOTE_MAX - 60;
+}
+
+function updateOpenDotFromEditor(host) {
+  const iso = host.dataset.date;
+  if (!iso) return;
+  const countInput = host.querySelector('[data-count-input]');
+  const noteInput = host.querySelector('[data-note-input]');
+  const count = clampDrinkCount(countInput?.value ?? 0);
+  const note = String(noteInput?.value ?? '');
+  const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+  const next = {
+    logged: current.logged,
+    count,
+    note: note.slice(0, NOTE_MAX),
+  };
+  APP_STATE.entriesByDate.set(iso, next);
+  const grid = document.querySelector('[data-grid]');
+  const dot = grid?.querySelector(`.dot[data-date="${iso}"]`);
+  if (dot) setDotFromEntry(dot, next);
+  updateBloomCharCount(host, next.note.length);
+}
+
+function closeBloomEditor({ restoreFocus = false } = {}) {
+  const host = document.querySelector('[data-bloom-host]');
+  if (!host || host.hidden) {
+    APP_STATE.openDate = null;
+    return;
+  }
+  const grid = document.querySelector('[data-grid]');
+  const activeDot = APP_STATE.openDate
+    ? grid?.querySelector(`.dot[data-date="${APP_STATE.openDate}"]`)
+    : null;
+  if (activeDot) {
+    delete activeDot.dataset.open;
+    activeDot.setAttribute('aria-expanded', 'false');
+  }
+  host.hidden = true;
+  host.replaceChildren();
+  if (restoreFocus && activeDot) activeDot.focus();
+  APP_STATE.openDate = null;
+}
+
+function openDay(dot, { focusEditor = true } = {}) {
+  if (dot.disabled) return;
+  const iso = dot.dataset.date;
+  if (!iso) return;
+  if (APP_STATE.openDate && APP_STATE.openDate !== iso) closeBloomEditor();
+  APP_STATE.openDate = iso;
+  dot.dataset.open = 'true';
+  dot.setAttribute('aria-expanded', 'true');
+
+  const entry = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+  const host = ensureBloomHost();
+  host.hidden = false;
+  host.dataset.date = iso;
+  host.replaceChildren();
+
+  const title = document.createElement('h2');
+  title.textContent = longDate(parseIsoDate(iso));
+  const controls = document.createElement('div');
+  const minus = document.createElement('button');
+  minus.type = 'button';
+  minus.dataset.step = '-1';
+  minus.textContent = '−';
+  const plus = document.createElement('button');
+  plus.type = 'button';
+  plus.dataset.step = '1';
+  plus.textContent = '+';
+  const count = document.createElement('input');
+  count.type = 'number';
+  count.inputMode = 'numeric';
+  count.min = '0';
+  count.max = '30';
+  count.step = '1';
+  count.value = String(entry.count);
+  count.dataset.countInput = 'true';
+  count.setAttribute('aria-label', 'Drink count');
+  controls.append(minus, count, plus);
+
+  const note = document.createElement('textarea');
+  note.dataset.noteInput = 'true';
+  note.maxLength = NOTE_MAX;
+  note.rows = 3;
+  note.placeholder = 'Add a note';
+  note.value = entry.note;
+
+  const noteCount = document.createElement('p');
+  noteCount.dataset.noteCount = 'true';
+  noteCount.hidden = true;
+
+  const saved = document.createElement('p');
+  saved.dataset.bloomSaved = 'true';
+  saved.textContent = 'saved ✓';
+  saved.hidden = true;
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.dataset.deleteDay = 'true';
+  del.textContent = 'Delete';
+  del.hidden = !entry.logged && entry.note.length === 0;
+
+  host.append(title, controls, note, noteCount, saved, del);
+  updateBloomCharCount(host, entry.note.length);
+
+  host.onfocusin = () => {
+    if (APP_STATE.blurTimer) {
+      clearTimeout(APP_STATE.blurTimer);
+      APP_STATE.blurTimer = null;
+    }
+  };
+
+  host.onfocusout = (event) => {
+    const next = event.relatedTarget;
+    if (next && host.contains(next)) return;
+    if (APP_STATE.blurTimer) clearTimeout(APP_STATE.blurTimer);
+    APP_STATE.blurTimer = setTimeout(() => {
+      APP_STATE.blurTimer = null;
+      scheduleSave(0);
+    }, BLUR_SAVE_GRACE_MS);
+  };
+
+  host.onclick = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.step) {
+      const delta = Number(target.dataset.step);
+      const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+      const next = { ...current, logged: true, count: clampDrinkCount(current.count + delta) };
+      APP_STATE.entriesByDate.set(iso, next);
+      count.value = String(next.count);
+      del.hidden = false;
+      updateOpenDotFromEditor(host);
+      scheduleSave();
+      return;
+    }
+    if (target.dataset.deleteDay === 'true') {
+      const cleared = { logged: false, count: 0, note: '' };
+      APP_STATE.entriesByDate.set(iso, cleared);
+      count.value = '0';
+      note.value = '';
+      del.hidden = true;
+      updateOpenDotFromEditor(host);
+      scheduleSave(0);
+    }
+  };
+
+  count.addEventListener('input', () => {
+    const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+    APP_STATE.entriesByDate.set(iso, {
+      ...current,
+      logged: true,
+      count: clampDrinkCount(count.value),
+    });
+    del.hidden = false;
+    updateOpenDotFromEditor(host);
+    scheduleSave();
+  });
+
+  note.addEventListener('input', () => {
+    const current = normalizeEntry(APP_STATE.entriesByDate.get(iso));
+    APP_STATE.entriesByDate.set(iso, {
+      ...current,
+      note: note.value.slice(0, NOTE_MAX),
+    });
+    del.hidden = false;
+    updateOpenDotFromEditor(host);
+    scheduleSave();
+  });
+
+  host.onkeydown = (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeBloomEditor({ restoreFocus: true });
+  };
+
+  if (focusEditor) count.focus();
+}
+
+function wireGridPointerAndOpen() {
+  const grid = document.querySelector('[data-grid]');
+  if (!grid) return;
+
+  grid.addEventListener('pointermove', (event) => {
+    if (event.pointerType === 'touch') {
+      if (APP_STATE.activeTouchPointerId !== event.pointerId) return;
+      const dot = dotAtPoint(grid, event.clientX, event.clientY);
+      if (!dot || dot.disabled) {
+        clearMagnify(grid);
+        return;
+      }
+      setMagnify(grid, dot, event);
+      return;
+    }
+    const dot = event.target instanceof Element ? event.target.closest('.dot') : null;
+    if (!(dot instanceof HTMLButtonElement) || dot.disabled) {
+      clearMagnify(grid);
+      return;
+    }
+    setMagnify(grid, dot);
+  });
+
+  grid.addEventListener('pointerleave', (event) => {
+    if (event.pointerType === 'touch' && APP_STATE.activeTouchPointerId !== null) return;
+    clearMagnify(grid);
+  });
+
+  grid.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    APP_STATE.activeTouchPointerId = event.pointerId;
+    const dot = dotAtPoint(grid, event.clientX, event.clientY);
+    if (!dot || dot.disabled) {
+      clearMagnify(grid);
+      return;
+    }
+    setMagnify(grid, dot, event);
+  });
+
+  grid.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch') return;
+    if (APP_STATE.activeTouchPointerId !== event.pointerId) return;
+    const dot = dotAtPoint(grid, event.clientX, event.clientY);
+    APP_STATE.activeTouchPointerId = null;
+    APP_STATE.suppressClickUntil = Date.now() + 600;
+    clearMagnify(grid);
+    if (!dot || dot.disabled) return;
+    openDay(dot);
+  });
+
+  grid.addEventListener('pointercancel', () => {
+    APP_STATE.activeTouchPointerId = null;
+    clearMagnify(grid);
+  });
+
+  grid.addEventListener('click', (event) => {
+    const dot = event.target instanceof Element ? event.target.closest('.dot') : null;
+    if (!(dot instanceof HTMLButtonElement) || dot.disabled) return;
+    if (Date.now() < APP_STATE.suppressClickUntil) {
+      event.preventDefault();
+      return;
+    }
+    openDay(dot);
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!APP_STATE.openDate) return;
+    const host = document.querySelector('[data-bloom-host]');
+    const target = event.target instanceof Node ? event.target : null;
+    if (!host || !target) return;
+    if (host.contains(target)) return;
+    if (target instanceof Element && target.closest(`.dot[data-date="${APP_STATE.openDate}"]`)) return;
+    closeBloomEditor();
+  });
+}
+
 // --- layout switching -----------------------------------------------------
 
 function pickLayout() {
@@ -336,6 +792,7 @@ function boot() {
   applyLayout(pickLayout());
   wireSeeMore();
   wireGridKeyboard();
+  wireGridPointerAndOpen();
 }
 
 if (typeof document !== 'undefined') {
@@ -349,13 +806,19 @@ if (typeof document !== 'undefined') {
 // Named exports for unit testing — harmless in a browser module context.
 export {
   isoDate,
+  parseIsoDate,
   mondayIndex,
   startOfDay,
   mondayOnOrBefore,
   longDate,
+  clampDrinkCount,
+  normalizeEntry,
+  countSummary,
   seededRand,
   mockEntry,
   buildDays,
   ariaForDay,
   bucketFor,
+  magnifyWeight,
+  computeMagnifyLevels,
 };

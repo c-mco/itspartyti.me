@@ -8,15 +8,21 @@
 
 import {
   isoDate,
+  parseIsoDate,
   mondayIndex,
   startOfDay,
   mondayOnOrBefore,
   longDate,
+  clampDrinkCount,
+  normalizeEntry,
+  countSummary,
   seededRand,
   mockEntry,
   buildDays,
   ariaForDay,
   bucketFor,
+  magnifyWeight,
+  computeMagnifyLevels,
 } from './app.js';
 
 // ---------------------------------------------------------------------------
@@ -221,6 +227,50 @@ test('longDate: formats a known Friday', () => {
 test('longDate: December date', () => {
   const d = new Date(2023, 11, 31); // Dec 31, 2023 — Sunday
   assertEqual(longDate(d), 'Sunday 31 December 2023');
+});
+
+// ---------------------------------------------------------------------------
+// parseIsoDate / clampDrinkCount / normalizeEntry / countSummary
+// ---------------------------------------------------------------------------
+
+test('parseIsoDate: parses YYYY-MM-DD in local calendar terms', () => {
+  const d = parseIsoDate('2026-05-11');
+  assertEqual(d.getFullYear(), 2026);
+  assertEqual(d.getMonth(), 4);
+  assertEqual(d.getDate(), 11);
+});
+
+test('clampDrinkCount: clamps negatives to 0 and rounds', () => {
+  assertEqual(clampDrinkCount(-3), 0);
+  assertEqual(clampDrinkCount(2.7), 3);
+});
+
+test('clampDrinkCount: caps at 30 and handles non-numeric', () => {
+  assertEqual(clampDrinkCount(45), 30);
+  assertEqual(clampDrinkCount('nope'), 0);
+});
+
+test('normalizeEntry: unlogged defaults', () => {
+  assertDeepEqual(normalizeEntry({ logged: false, count: 5, note: 'x' }), {
+    logged: false,
+    count: 0,
+    note: '',
+  });
+});
+
+test('normalizeEntry: logged entries are normalized', () => {
+  assertDeepEqual(normalizeEntry({ logged: true, count: 2.2, note: 9 }), {
+    logged: true,
+    count: 2,
+    note: '9',
+  });
+});
+
+test('countSummary: sentence fragments for all states', () => {
+  assertEqual(countSummary({ logged: false }), 'not logged');
+  assertEqual(countSummary({ logged: true, count: 0 }), 'no drinks');
+  assertEqual(countSummary({ logged: true, count: 1 }), '1 drink');
+  assertEqual(countSummary({ logged: true, count: 4 }), '4 drinks');
 });
 
 // ---------------------------------------------------------------------------
@@ -509,6 +559,31 @@ test('bucketFor: valid bucket for every mock count (0–6)', () => {
     assertTrue(valid.has(bucket), `count ${count} produced invalid bucket "${bucket}"`);
   }
   assertEqual(bucketFor({ logged: false }), 'unlogged');
+});
+
+// ---------------------------------------------------------------------------
+// magnify helpers
+// ---------------------------------------------------------------------------
+
+test('magnifyWeight: falloff profile and out-of-range behavior', () => {
+  assertEqual(magnifyWeight(0), 1);
+  assertEqual(magnifyWeight(1), 0.6);
+  assertEqual(magnifyWeight(2), 0.24);
+  assertEqual(magnifyWeight(3), 0);
+});
+
+test('magnifyWeight: reduced motion only highlights center', () => {
+  assertEqual(magnifyWeight(0, true), 1);
+  assertEqual(magnifyWeight(1, true), 0);
+});
+
+test('computeMagnifyLevels: neighborhood levels around center index', () => {
+  assertDeepEqual(computeMagnifyLevels(3, 7), [0, 0.24, 0.6, 1, 0.6, 0.24, 0]);
+});
+
+test('computeMagnifyLevels: invalid center returns zeros', () => {
+  assertDeepEqual(computeMagnifyLevels(-1, 5), [0, 0, 0, 0, 0]);
+  assertDeepEqual(computeMagnifyLevels(9, 5), [0, 0, 0, 0, 0]);
 });
 
 // ---------------------------------------------------------------------------
