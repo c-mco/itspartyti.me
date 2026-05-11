@@ -176,7 +176,8 @@ function displayInitial(displayName, email) {
 // Mock data (used only when ?demo=1)
 // =========================================================================
 
-/** Tiny deterministic hash → pseudo-random number in [0, 1). */
+/** Tiny deterministic hash → pseudo-random number in [0, 1).
+ *  FNV-1a-inspired mixer; fine for fixture variety, not crypto. */
 function seededRand(seed) {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < seed.length; i++) {
@@ -1488,13 +1489,13 @@ function wireAuth() {
       return;
     }
     if (msg) { msg.textContent = mode === 'register' ? 'Creating account…' : 'Signing in…'; msg.dataset.tone = ''; }
+    if (mode === 'register' && passValue.length < 8) {
+      if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.dataset.tone = 'error'; }
+      return;
+    }
     if (submit instanceof HTMLButtonElement) submit.disabled = true;
     try {
       if (mode === 'register') {
-        if (passValue.length < 8) {
-          if (msg) { msg.textContent = 'Password must be at least 8 characters.'; msg.dataset.tone = 'error'; }
-          return;
-        }
         await api.register({ email: emailValue, password: passValue, display_name: nameValue });
         await api.login({ email: emailValue, password: passValue });
       } else {

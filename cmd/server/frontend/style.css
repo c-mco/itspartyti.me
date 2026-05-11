@@ -548,6 +548,9 @@ textarea { resize: vertical; min-height: 4lh; }
   font-weight: 500;
   transition: opacity 200ms ease;
 }
+[data-bloom-saved][data-tone="error"] {
+  color: var(--ramp-peak);
+}
 [data-bloom-saved][hidden] { display: none; }
 
 [data-delete-day] {
