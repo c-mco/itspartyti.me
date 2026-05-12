@@ -24,6 +24,7 @@ const AUTO_SAVE_IDLE_MS = 800;
 const BLUR_SAVE_GRACE_MS = 300;
 const NOTE_MAX = 500;
 const MAGNIFY_RADIUS = 2;
+const BLOOM_VIEWPORT_MARGIN = 8;
 const TOUCH_CLICK_SUPPRESS_MS = 600;
 const TOAST_DURATION_MS = 4500;
 const AUTO_OPEN_AWAY_DAYS = 2;
@@ -46,7 +47,7 @@ const APP_STATE = {
   activeTouchPointerId: null,
   suppressClickUntil: 0,
   bloomViewportWired: false,
-  bloomRepositionRaf: null,
+  bloomRepositionFrameId: null,
   pointerWired: false,
   keyboardWired: false,
   seeMoreWired: false,
@@ -491,7 +492,7 @@ function positionBloomHost(host, dot) {
   const hostRect = host.getBoundingClientRect();
   if (!hostRect.width || !hostRect.height) return;
 
-  const margin = 8;
+  const margin = BLOOM_VIEWPORT_MARGIN;
   const halfW = hostRect.width / 2;
   const halfH = hostRect.height / 2;
   const minX = margin + halfW;
@@ -520,9 +521,9 @@ function repositionOpenBloomHost() {
 }
 
 function scheduleBloomReposition() {
-  if (APP_STATE.bloomRepositionRaf) return;
-  APP_STATE.bloomRepositionRaf = requestAnimationFrame(() => {
-    APP_STATE.bloomRepositionRaf = null;
+  if (APP_STATE.bloomRepositionFrameId) return;
+  APP_STATE.bloomRepositionFrameId = requestAnimationFrame(() => {
+    APP_STATE.bloomRepositionFrameId = null;
     repositionOpenBloomHost();
   });
 }
@@ -683,9 +684,9 @@ function closeBloomEditor({ restoreFocus = false } = {}) {
     clearTimeout(APP_STATE.savedShowTimer);
     APP_STATE.savedShowTimer = null;
   }
-  if (APP_STATE.bloomRepositionRaf) {
-    cancelAnimationFrame(APP_STATE.bloomRepositionRaf);
-    APP_STATE.bloomRepositionRaf = null;
+  if (APP_STATE.bloomRepositionFrameId) {
+    cancelAnimationFrame(APP_STATE.bloomRepositionFrameId);
+    APP_STATE.bloomRepositionFrameId = null;
   }
   if (restoreFocus && activeDot) activeDot.focus();
   APP_STATE.openDate = null;
