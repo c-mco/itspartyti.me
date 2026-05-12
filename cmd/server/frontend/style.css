@@ -240,7 +240,7 @@ textarea { resize: vertical; min-height: 4lh; }
 
 .grid-wrap {
   position: relative;
-  overflow-x: hidden;
+  overflow: visible;
 }
 
 .grid {

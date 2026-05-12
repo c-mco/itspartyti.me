@@ -588,8 +588,19 @@ test('magnifyWeight: reduced motion only highlights center', () => {
   assertEqual(magnifyWeight(1, true), 0);
 });
 
-test('computeMagnifyLevels: neighborhood levels around center index', () => {
-  assertDeepEqual(computeMagnifyLevels(3, 7), [0, 0.24, 0.6, 1, 0.6, 0.24, 0]);
+test('computeMagnifyLevels: horizontal layout uses grid-neighborhood distance', () => {
+  const levels = computeMagnifyLevels(6, 14, false, 'horizontal', 7);
+  assertEqual(levels[6], 1, 'center dot should be fully magnified');
+  assertEqual(levels[5], 0.6, 'adjacent dot in same column should magnify');
+  assertEqual(levels[13], 0.6, 'adjacent week in same row should magnify');
+  assertEqual(levels[7], 0, 'next index in a new week should not magnify from bottom-row focus');
+});
+
+test('computeMagnifyLevels: vertical layout uses row-major grid-neighborhood distance', () => {
+  const levels = computeMagnifyLevels(6, 14, false, 'vertical', 7);
+  assertEqual(levels[6], 1, 'center dot should be fully magnified');
+  assertEqual(levels[5], 0.6, 'adjacent day in same week should magnify');
+  assertEqual(levels[7], 0, 'first cell of the next row should not magnify from far edge');
 });
 
 test('computeMagnifyLevels: invalid center returns zeros', () => {

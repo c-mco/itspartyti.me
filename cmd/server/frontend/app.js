@@ -251,11 +251,25 @@ function magnifyWeight(distance, reducedMotion = false) {
   return 0.24;
 }
 
-function computeMagnifyLevels(centerIndex, total, reducedMotion = false) {
+function indexToGridCell(index, orientation, rows = 7) {
+  const safeRows = Math.max(1, rows);
+  if (orientation === 'vertical') {
+    return { row: Math.floor(index / safeRows), col: index % safeRows };
+  }
+  return { row: index % safeRows, col: Math.floor(index / safeRows) };
+}
+
+function computeMagnifyLevels(centerIndex, total, reducedMotion = false, orientation = 'horizontal', rows = 7) {
   const levels = Array.from({ length: total }, () => 0);
   if (centerIndex < 0 || centerIndex >= total) return levels;
+  const center = indexToGridCell(centerIndex, orientation, rows);
   for (let i = 0; i < total; i++) {
-    levels[i] = magnifyWeight(Math.abs(i - centerIndex), reducedMotion);
+    const cell = indexToGridCell(i, orientation, rows);
+    const distance = Math.max(
+      Math.abs(cell.row - center.row),
+      Math.abs(cell.col - center.col),
+    );
+    levels[i] = magnifyWeight(distance, reducedMotion);
   }
   return levels;
 }
@@ -451,7 +465,8 @@ function setMagnify(grid, centerDot, point = null) {
   const centerIndex = dots.indexOf(centerDot);
   if (centerIndex < 0) return;
   const reduced = isReducedMotion();
-  const levels = computeMagnifyLevels(centerIndex, dots.length, reduced);
+  const orientation = grid.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
+  const levels = computeMagnifyLevels(centerIndex, dots.length, reduced, orientation, 7);
 
   dots.forEach((dot, idx) => {
     const level = levels[idx];
