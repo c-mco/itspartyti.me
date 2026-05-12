@@ -442,6 +442,7 @@ function clearMagnify(grid) {
   });
 }
 
+// Apply neighbourhood magnification state to dots only (no floating tooltip).
 function setMagnify(grid, centerDot) {
   const dots = Array.from(grid.querySelectorAll('.dot'));
   const centerIndex = dots.indexOf(centerDot);
@@ -486,6 +487,8 @@ function ensureBloomHost() {
   return host;
 }
 
+// Position the bloom card in viewport coordinates, anchored to the dot center.
+// --bloom-origin-* stores the delta used by the open animation keyframes.
 function positionBloomHost(host, dot) {
   if (!host || !dot) return;
   const dotRect = dot.getBoundingClientRect();
@@ -521,6 +524,7 @@ function repositionOpenBloomHost() {
 }
 
 function scheduleBloomReposition() {
+  // Coalesce rapid scroll/resize events to one reposition per animation frame.
   if (APP_STATE.bloomRepositionFrameId) return;
   APP_STATE.bloomRepositionFrameId = requestAnimationFrame(() => {
     APP_STATE.bloomRepositionFrameId = null;

@@ -333,16 +333,17 @@ textarea { resize: vertical; min-height: 4lh; }
 
 /* Open-for-edit affordance — pulse/ring around the dot under the bloom card. */
 .dot[data-open="true"] {
+  --open-dot-scale: 2.7;
   z-index: 5;
   border-radius: .8rem;
   box-shadow:
     0 0 0 2px var(--bg),
     0 0 0 4px var(--accent),
     0 12px 24px -14px oklch(22% 0.05 270 / 0.55);
-  transform: scale(2.7);
+  transform: scale(var(--open-dot-scale));
 }
 .dot[data-open="true"][data-magnify] {
-  transform: scale(2.7);
+  transform: scale(var(--open-dot-scale));
 }
 
 /* Magnify — JS sets data-magnify ∈ {0.24, 0.6, 1}. */
