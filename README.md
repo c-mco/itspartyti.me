@@ -15,6 +15,20 @@ Multi-user, self-hosted, no analytics, no tracking. The app is a mirror, not a j
 - Responsive, mobile-first UI
 - No external fonts, no trackers, no third-party JS, no build step
 
+## A/B layout test (dot-grid orientation)
+
+Use the `layout` URL param to switch orientation/range on the same data:
+
+- `?layout=A` → year view, weeks as columns (horizontal scroll)
+- `?layout=B` → year view, weeks as rows (vertical scroll)
+- `?layout=C` → rolling 26 weeks first, with in-app “See more” for full year
+
+Examples:
+
+- `http://localhost:8080/?layout=A`
+- `http://localhost:8080/?layout=B`
+- `http://localhost:8080/?layout=C`
+
 ## In progress
 
 - Bloom-in-place editor for per-day entries

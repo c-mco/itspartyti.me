@@ -240,6 +240,7 @@ textarea { resize: vertical; min-height: 4lh; }
 
 .grid-wrap {
   position: relative;
+  overflow-x: hidden;
 }
 
 .grid {
@@ -483,6 +484,7 @@ textarea { resize: vertical; min-height: 4lh; }
 .bloom-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: .5rem;
 }
 .bloom-controls button[data-step] {
@@ -598,13 +600,15 @@ textarea { resize: vertical; min-height: 4lh; }
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: .75rem;
   font-size: .9rem;
   box-shadow: 0 16px 32px -12px oklch(20% 0.05 270 / 0.5);
   pointer-events: auto;
   animation: toast-in 200ms cubic-bezier(.2,.7,.2,1);
-  max-width: calc(100vw - 2rem);
+  width: min(100%, calc(100vw - 2rem));
 }
+.toast > span { overflow-wrap: anywhere; }
 .toast button {
   background: transparent;
   color: var(--bg);
@@ -876,6 +880,7 @@ textarea { resize: vertical; min-height: 4lh; }
 .auth-card .auth-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 1rem;
   margin-top: .25rem;
@@ -892,5 +897,24 @@ textarea { resize: vertical; min-height: 4lh; }
   cursor: pointer;
 }
 .auth-card .switch-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 420px) {
+  .bloom-controls .count-label {
+    margin-inline-start: 0;
+    inline-size: 100%;
+  }
+
+  .auth-card {
+    padding: 1.15rem;
+  }
+
+  .auth-card .auth-actions {
+    align-items: stretch;
+  }
+
+  .auth-card .auth-actions .btn {
+    inline-size: 100%;
+  }
+}
 
 [hidden] { display: none !important; }
