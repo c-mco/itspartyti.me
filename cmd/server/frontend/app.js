@@ -24,6 +24,7 @@ const AUTO_SAVE_IDLE_MS = 800;
 const BLUR_SAVE_GRACE_MS = 300;
 const NOTE_MAX = 500;
 const MAGNIFY_RADIUS = 2;
+// Minimum viewport edge spacing (px) for the bloom card.
 const BLOOM_VIEWPORT_MARGIN = 8;
 const TOUCH_CLICK_SUPPRESS_MS = 600;
 const TOAST_DURATION_MS = 4500;
@@ -493,6 +494,7 @@ function positionBloomHost(host, dot) {
   if (!host || !dot) return;
   const dotRect = dot.getBoundingClientRect();
   const hostRect = host.getBoundingClientRect();
+  // Skip until dimensions exist (first paint / hidden state).
   if (!hostRect.width || !hostRect.height) return;
 
   const margin = BLOOM_VIEWPORT_MARGIN;

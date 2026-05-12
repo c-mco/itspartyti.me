@@ -333,6 +333,7 @@ textarea { resize: vertical; min-height: 4lh; }
 
 /* Open-for-edit affordance — pulse/ring around the dot under the bloom card. */
 .dot[data-open="true"] {
+  /* Chosen to read as "expanded from dot" while staying under bloom host bounds. */
   --open-dot-scale: 2.7;
   z-index: 5;
   border-radius: .8rem;
