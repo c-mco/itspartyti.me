@@ -289,6 +289,7 @@ textarea { resize: vertical; min-height: 4lh; }
   position: relative;
   background: var(--bucket-color);
   transition: transform 140ms cubic-bezier(.2, .7, .2, 1),
+              border-radius 180ms cubic-bezier(.2, .7, .2, 1),
               background-color 200ms ease,
               box-shadow 160ms ease;
   transform-origin: center;
@@ -332,9 +333,18 @@ textarea { resize: vertical; min-height: 4lh; }
 
 /* Open-for-edit affordance — pulse/ring around the dot under the bloom card. */
 .dot[data-open="true"] {
-  z-index: 3;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-  transform: scale(1.4);
+  /* Chosen to read as "expanded from dot" while staying under bloom host bounds. */
+  --open-dot-scale: 2.7;
+  z-index: 5;
+  border-radius: .8rem;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent),
+    0 12px 24px -14px oklch(22% 0.05 270 / 0.55);
+  transform: scale(var(--open-dot-scale));
+}
+.dot[data-open="true"][data-magnify] {
+  transform: scale(var(--open-dot-scale));
 }
 
 /* Magnify — JS sets data-magnify ∈ {0.24, 0.6, 1}. */
@@ -366,22 +376,6 @@ textarea { resize: vertical; min-height: 4lh; }
     box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--accent);
   }
   .dot[data-open="true"] { transform: none; }
-}
-
-/* =========================================================================
- * Magnify floating label
- * ========================================================================= */
-
-[data-magnify-label] {
-  background: var(--ink);
-  color: var(--bg);
-  padding: .35rem .6rem;
-  border-radius: 999px;
-  font-size: .8rem;
-  font-weight: 500;
-  letter-spacing: .01em;
-  white-space: nowrap;
-  box-shadow: 0 6px 18px -6px oklch(20% 0.05 270 / 0.4);
 }
 
 /* =========================================================================
@@ -459,19 +453,37 @@ textarea { resize: vertical; min-height: 4lh; }
  * ========================================================================= */
 
 [data-bloom-host] {
+  --bloom-radius: 1.05rem;
   background: var(--bg-elev);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1.1rem 1.1rem 1rem;
+  border-radius: var(--bloom-radius);
+  padding: .9rem 1rem .95rem;
   display: grid;
-  gap: .85rem;
-  position: relative;
-  animation: bloom-in 180ms cubic-bezier(.2,.7,.2,1);
+  gap: .8rem;
+  position: fixed;
+  inset: auto;
+  inline-size: min(22rem, calc(100vw - 1rem));
+  z-index: 12;
+  box-shadow: 0 20px 46px -22px oklch(20% 0.05 270 / 0.55);
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  animation: bloom-in-from-dot 190ms cubic-bezier(.2,.7,.2,1);
 }
 
-@keyframes bloom-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.985); }
-  to   { opacity: 1; transform: none; }
+@keyframes bloom-in-from-dot {
+  from {
+    opacity: 0;
+    border-radius: 999px;
+    transform: translate(
+      calc(-50% + var(--bloom-origin-x, 0px)),
+      calc(-50% + var(--bloom-origin-y, 0px))
+    ) scale(.08);
+  }
+  to {
+    opacity: 1;
+    border-radius: var(--bloom-radius);
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 [data-bloom-host] h2 {
