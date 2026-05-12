@@ -606,7 +606,7 @@ textarea { resize: vertical; min-height: 4lh; }
   box-shadow: 0 16px 32px -12px oklch(20% 0.05 270 / 0.5);
   pointer-events: auto;
   animation: toast-in 200ms cubic-bezier(.2,.7,.2,1);
-  width: min(100%, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
 }
 .toast > span { overflow-wrap: anywhere; }
 .toast button {
