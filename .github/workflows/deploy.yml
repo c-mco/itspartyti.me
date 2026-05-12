@@ -9,7 +9,7 @@ on:
 # Serialize deploys per environment. Prod never races itself; each PR
 # serializes against itself but PRs don't block each other.
 concurrency:
-  group: deploy-${{ (github.event_name == 'pull_request' || github.ref_name == 'uat') && (github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || 'preview-uat') || 'prod' }}
+  group: deploy-${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || github.ref_name == 'uat' && 'preview-uat' || 'prod' }}
   cancel-in-progress: false
 
 jobs:
