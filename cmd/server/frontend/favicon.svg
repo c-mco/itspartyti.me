@@ -1,5 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="18" fill="#e9eefc"/>
-  <circle cx="32" cy="32" r="18" fill="#2f6feb"/>
-  <circle cx="32" cy="32" r="10" fill="#9ec1ff"/>
+  <title>itspartyti.me icon</title>
+  <style>
+    :root {
+      --icon-bg: #e9eefc;
+      --icon-outer: #2f6feb;
+      --icon-inner: #9ec1ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --icon-bg: #1c1d24;
+        --icon-outer: #7aa2ff;
+        --icon-inner: #d7e4ff;
+      }
+    }
+  </style>
+  <rect width="64" height="64" rx="18" fill="var(--icon-bg)"/>
+  <circle cx="32" cy="32" r="18" fill="var(--icon-outer)"/>
+  <circle cx="32" cy="32" r="10" fill="var(--icon-inner)"/>
 </svg>
