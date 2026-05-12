@@ -2,14 +2,19 @@ name: deploy
 
 on:
   push:
-    branches: [main, uat]
+    branches: [main, UAT]
   pull_request:
     branches: [main]
 
-# Serialize deploys per environment. Prod never races itself; each PR
-# serializes against itself but PRs don't block each other.
+# Serialize deploys per environment. Prod never races itself; UAT pushes
+# serialize against each other; each PR serializes against itself.
 concurrency:
-  group: deploy-${{ github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) || (github.ref_name == 'uat' && 'preview-uat') || 'prod' }}
+  group: >-
+    deploy-${{
+      github.event_name == 'pull_request' && format('preview-{0}', github.event.pull_request.number) ||
+      github.ref_name == 'UAT' && 'preview-uat' ||
+      'prod'
+    }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           SHA="${FULL_SHA:0:7}"
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.ref_name }}" = "uat" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.ref_name }}" = "UAT" ]; then
             {
               echo "version=${SHA}-preview"
               echo "sha=${FULL_SHA}"
