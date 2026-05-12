@@ -46,6 +46,7 @@ const APP_STATE = {
   activeTouchPointerId: null,
   suppressClickUntil: 0,
   bloomViewportWired: false,
+  bloomRepositionRaf: null,
   pointerWired: false,
   keyboardWired: false,
   seeMoreWired: false,
@@ -518,11 +519,19 @@ function repositionOpenBloomHost() {
   positionBloomHost(host, dot);
 }
 
+function scheduleBloomReposition() {
+  if (APP_STATE.bloomRepositionRaf) return;
+  APP_STATE.bloomRepositionRaf = requestAnimationFrame(() => {
+    APP_STATE.bloomRepositionRaf = null;
+    repositionOpenBloomHost();
+  });
+}
+
 function wireBloomViewportTracking() {
   if (APP_STATE.bloomViewportWired) return;
   APP_STATE.bloomViewportWired = true;
-  window.addEventListener('resize', repositionOpenBloomHost, { passive: true });
-  document.addEventListener('scroll', repositionOpenBloomHost, { passive: true, capture: true });
+  window.addEventListener('resize', scheduleBloomReposition, { passive: true });
+  document.addEventListener('scroll', scheduleBloomReposition, { passive: true, capture: true });
 }
 
 function announceSaved() {
@@ -674,6 +683,10 @@ function closeBloomEditor({ restoreFocus = false } = {}) {
     clearTimeout(APP_STATE.savedShowTimer);
     APP_STATE.savedShowTimer = null;
   }
+  if (APP_STATE.bloomRepositionRaf) {
+    cancelAnimationFrame(APP_STATE.bloomRepositionRaf);
+    APP_STATE.bloomRepositionRaf = null;
+  }
   if (restoreFocus && activeDot) activeDot.focus();
   APP_STATE.openDate = null;
 }
@@ -759,8 +772,7 @@ function openDay(dot, { focusEditor = true } = {}) {
 
   host.append(title, controls, note, meta, del);
   updateBloomCharCount(host, entry.note.length);
-  positionBloomHost(host, dot);
-  requestAnimationFrame(() => positionBloomHost(host, dot));
+  scheduleBloomReposition();
   wireBloomViewportTracking();
 
   host.onfocusin = () => {
