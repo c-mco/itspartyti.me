@@ -864,6 +864,7 @@ function wireGridPointerAndOpen() {
   if (!grid) return;
 
   grid.addEventListener('pointermove', (event) => {
+    if (APP_STATE.openDate) { clearMagnify(grid); return; }
     if (event.pointerType === 'touch') {
       if (APP_STATE.activeTouchPointerId !== event.pointerId) return;
       const dot = dotAtPoint(grid, event.clientX, event.clientY);
@@ -882,6 +883,7 @@ function wireGridPointerAndOpen() {
   });
 
   grid.addEventListener('pointerdown', (event) => {
+    if (APP_STATE.openDate) { clearMagnify(grid); return; }
     if (event.pointerType !== 'touch') return;
     APP_STATE.activeTouchPointerId = event.pointerId;
     const dot = dotAtPoint(grid, event.clientX, event.clientY);
