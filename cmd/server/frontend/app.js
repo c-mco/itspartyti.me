@@ -651,26 +651,29 @@ function _scrubCellAt(x, y) {
 /**
  * Apply dock-style magnification centred on `centerCell`.
  * Uses data-row / data-col attributes for distance math — no layout reads.
- * Max scale: 2.2× at centre, tapering to 1× at radius 3.5 cells.
+ * Keeps the effect tight so nearby cells don't balloon into a wrapped blob.
  */
 function _applyMagnification(centerCell) {
   const cr = +centerCell.dataset.row;
   const cc = +centerCell.dataset.col;
-  const RADIUS    = 3.5;
-  const MAX_SCALE = 2.2;
+  const ROW_RADIUS = 2.25;
+  const COL_RADIUS = 1.35;
+  const MAX_SCALE  = 1.85;
 
   const newMap = new Map();
 
   // Collect all data cells from the rendered grid
-  const cells = $id('year-grid').querySelectorAll('.ygrid-cell');
+  const cells = $id('year-grid').querySelectorAll('.ygrid-cell[data-date]');
 
   // Phase 1: compute scales (reads only — no DOM writes yet)
   for (const cell of cells) {
     const dr   = +cell.dataset.row - cr;
     const dc   = +cell.dataset.col - cc;
-    const dist = Math.sqrt(dr * dr + dc * dc);
-    if (dist < RADIUS) {
-      const t     = Math.pow(1 - dist / RADIUS, 1.6); // falloff curve
+    if (Math.abs(dr) > ROW_RADIUS || Math.abs(dc) > COL_RADIUS) continue;
+
+    const dist = Math.hypot(dr / ROW_RADIUS, dc / COL_RADIUS);
+    if (dist < 1) {
+      const t     = Math.pow(1 - dist, 1.8); // falloff curve
       const scale = 1 + (MAX_SCALE - 1) * t;
       newMap.set(cell, scale);
     }
