@@ -24,9 +24,6 @@ const AUTO_SAVE_IDLE_MS = 800;
 const BLUR_SAVE_GRACE_MS = 300;
 const NOTE_MAX = 500;
 const MAGNIFY_RADIUS = 2;
-const TOUCH_LABEL_OFFSET_X = -20;
-const TOUCH_LABEL_OFFSET_Y = -56;
-const MOUSE_LABEL_OFFSET_Y = 12;
 const TOUCH_CLICK_SUPPRESS_MS = 600;
 const TOAST_DURATION_MS = 4500;
 const AUTO_OPEN_AWAY_DAYS = 2;
@@ -48,6 +45,7 @@ const APP_STATE = {
   savedHideTimer: null,
   activeTouchPointerId: null,
   suppressClickUntil: 0,
+  bloomViewportWired: false,
   pointerWired: false,
   keyboardWired: false,
   seeMoreWired: false,
@@ -434,33 +432,15 @@ function setDotFromEntry(dot, entry) {
 // Magnify
 // =========================================================================
 
-function ensureMagnifyLabel() {
-  let label = document.querySelector('[data-magnify-label]');
-  if (label) return label;
-  label = document.createElement('div');
-  label.dataset.magnifyLabel = 'true';
-  label.hidden = true;
-  label.style.position = 'fixed';
-  label.style.left = '0';
-  label.style.top = '0';
-  label.style.transform = 'translate(-9999px,-9999px)';
-  label.style.pointerEvents = 'none';
-  label.style.zIndex = '30';
-  document.body.appendChild(label);
-  return label;
-}
-
 function clearMagnify(grid) {
   const dots = Array.from(grid.querySelectorAll('.dot'));
   dots.forEach((dot) => {
     delete dot.dataset.magnify;
     delete dot.dataset.magnified;
   });
-  const label = ensureMagnifyLabel();
-  label.hidden = true;
 }
 
-function setMagnify(grid, centerDot, point = null) {
+function setMagnify(grid, centerDot) {
   const dots = Array.from(grid.querySelectorAll('.dot'));
   const centerIndex = dots.indexOf(centerDot);
   if (centerIndex < 0) return;
@@ -479,19 +459,6 @@ function setMagnify(grid, centerDot, point = null) {
       delete dot.dataset.magnified;
     }
   });
-
-  const label = ensureMagnifyLabel();
-  const iso = centerDot.dataset.date;
-  const entry = APP_STATE.entriesByDate.get(iso) ?? { logged: false, count: 0, note: '' };
-  const date = parseIsoDate(iso);
-  label.textContent = `${longDate(date)} · ${countSummary(entry)}`;
-  label.hidden = false;
-  const rect = centerDot.getBoundingClientRect();
-  const xRaw = point ? point.clientX + TOUCH_LABEL_OFFSET_X : rect.left + (rect.width / 2);
-  const yRaw = point ? point.clientY + TOUCH_LABEL_OFFSET_Y : rect.top - MOUSE_LABEL_OFFSET_Y;
-  const x = Math.max(16, Math.min(window.innerWidth - 16, xRaw));
-  const y = Math.max(20, Math.min(window.innerHeight - 20, yRaw));
-  label.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
 }
 
 function dotAtPoint(grid, x, y) {
@@ -513,11 +480,49 @@ function ensureBloomHost() {
   host = document.createElement('section');
   host.dataset.bloomHost = 'true';
   host.hidden = true;
-  const app = document.querySelector('.app');
-  const quickAdd = document.querySelector('.quick-add');
-  if (app && quickAdd) app.insertBefore(host, quickAdd);
-  else if (app) app.appendChild(host);
+  document.body.appendChild(host);
   return host;
+}
+
+function positionBloomHost(host, dot) {
+  if (!host || !dot) return;
+  const dotRect = dot.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  if (!hostRect.width || !hostRect.height) return;
+
+  const margin = 8;
+  const halfW = hostRect.width / 2;
+  const halfH = hostRect.height / 2;
+  const minX = margin + halfW;
+  const maxX = window.innerWidth - margin - halfW;
+  const minY = margin + halfH;
+  const maxY = window.innerHeight - margin - halfH;
+  const rawX = dotRect.left + (dotRect.width / 2);
+  const rawY = dotRect.top + (dotRect.height / 2);
+  const x = Math.max(minX, Math.min(maxX, rawX));
+  const y = Math.max(minY, Math.min(maxY, rawY));
+
+  host.style.left = `${Math.round(x)}px`;
+  host.style.top = `${Math.round(y)}px`;
+  host.style.setProperty('--bloom-origin-x', `${Math.round(rawX - x)}px`);
+  host.style.setProperty('--bloom-origin-y', `${Math.round(rawY - y)}px`);
+}
+
+function repositionOpenBloomHost() {
+  if (!APP_STATE.openDate) return;
+  const host = document.querySelector('[data-bloom-host]');
+  if (!host || host.hidden) return;
+  const grid = document.querySelector('[data-grid]');
+  const dot = grid?.querySelector(`.dot[data-date="${APP_STATE.openDate}"]`);
+  if (!dot || dot.disabled) return;
+  positionBloomHost(host, dot);
+}
+
+function wireBloomViewportTracking() {
+  if (APP_STATE.bloomViewportWired) return;
+  APP_STATE.bloomViewportWired = true;
+  window.addEventListener('resize', repositionOpenBloomHost, { passive: true });
+  document.addEventListener('scroll', repositionOpenBloomHost, { passive: true, capture: true });
 }
 
 function announceSaved() {
@@ -657,6 +662,10 @@ function closeBloomEditor({ restoreFocus = false } = {}) {
   host.hidden = true;
   host.replaceChildren();
   delete host.dataset.date;
+  host.style.left = '';
+  host.style.top = '';
+  host.style.removeProperty('--bloom-origin-x');
+  host.style.removeProperty('--bloom-origin-y');
   if (APP_STATE.savedHideTimer) {
     clearTimeout(APP_STATE.savedHideTimer);
     APP_STATE.savedHideTimer = null;
@@ -674,6 +683,8 @@ function openDay(dot, { focusEditor = true } = {}) {
   const iso = dot.dataset.date;
   if (!iso) return;
   if (APP_STATE.openDate && APP_STATE.openDate !== iso) closeBloomEditor();
+  const grid = document.querySelector('[data-grid]');
+  if (grid) clearMagnify(grid);
   APP_STATE.openDate = iso;
   dot.dataset.open = 'true';
   dot.setAttribute('aria-expanded', 'true');
@@ -748,6 +759,9 @@ function openDay(dot, { focusEditor = true } = {}) {
 
   host.append(title, controls, note, meta, del);
   updateBloomCharCount(host, entry.note.length);
+  positionBloomHost(host, dot);
+  requestAnimationFrame(() => positionBloomHost(host, dot));
+  wireBloomViewportTracking();
 
   host.onfocusin = () => {
     if (APP_STATE.blurTimer) {
@@ -835,7 +849,7 @@ function wireGridPointerAndOpen() {
       if (APP_STATE.activeTouchPointerId !== event.pointerId) return;
       const dot = dotAtPoint(grid, event.clientX, event.clientY);
       if (!dot || dot.disabled) { clearMagnify(grid); return; }
-      setMagnify(grid, dot, event);
+      setMagnify(grid, dot);
       return;
     }
     const dot = event.target instanceof Element ? event.target.closest('.dot') : null;
@@ -853,7 +867,7 @@ function wireGridPointerAndOpen() {
     APP_STATE.activeTouchPointerId = event.pointerId;
     const dot = dotAtPoint(grid, event.clientX, event.clientY);
     if (!dot || dot.disabled) { clearMagnify(grid); return; }
-    setMagnify(grid, dot, event);
+    setMagnify(grid, dot);
   });
 
   grid.addEventListener('pointerup', (event) => {
