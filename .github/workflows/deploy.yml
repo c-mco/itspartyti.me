@@ -81,16 +81,14 @@ jobs:
 
             if [ "$IS_PREVIEW" = "true" ]; then
               DEPLOY_DIR="$HOME/itspartyti.me-preview"
-              WORKTREE=$(mktemp -d)
-              trap 'git -C "$PROD_REPO" worktree remove --force "$WORKTREE" 2>/dev/null || true; rm -rf "$WORKTREE"' EXIT
-              git -C "$PROD_REPO" fetch origin
-              git -C "$PROD_REPO" worktree add "$WORKTREE" "$SHA"
-              BUILD_DIR="$WORKTREE"
             else
               DEPLOY_DIR="$HOME/itspartyti.me"
-              git -C "$PROD_REPO" pull origin main
-              BUILD_DIR="$PROD_REPO"
             fi
+            WORKTREE=$(mktemp -d)
+            trap 'git -C "$PROD_REPO" worktree remove --force "$WORKTREE" 2>/dev/null || true; rm -rf "$WORKTREE"' EXIT
+            git -C "$PROD_REPO" fetch origin
+            git -C "$PROD_REPO" worktree add --detach "$WORKTREE" "$SHA"
+            BUILD_DIR="$WORKTREE"
 
             go build -C "$BUILD_DIR" \
               -ldflags "-s -w -X main.version=$VERSION" \
